@@ -1,12 +1,13 @@
 export class ApiResponse<T> {
-  statusCode: number;
-  data: T;
-  message: string;
   success: boolean;
-  constructor(statusCode: number, data: T, message = "Success") {
-    this.statusCode = statusCode;
+  data: T;
+  message?: string;
+  meta?: any;
+
+  constructor(data: T, message?: string, meta?: any) {
+    this.success = true;
     this.data = data;
     this.message = message;
-    this.success = true;
+    this.meta = meta;
   }
 }

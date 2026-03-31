@@ -12,9 +12,9 @@ export const errorMiddleware=(err:Error, req:Request, res:Response, next:NextFun
             ...(env.NODE_ENV==="development" && { stack: err.stack })
         });
     }
-    res.status(500).json({
-        success: false,
-        message: "Internal Server Error",
-        ...(env.NODE_ENV==="development" && { stack: err.stack })
-    });
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            code: "INTERNAL_SERVER_ERROR"
+        });
 }

@@ -1,4 +1,5 @@
 import { Request } from "express";
+import { GetContentQuery } from "./content.dto";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -13,6 +14,6 @@ declare module "express-serve-static-core" {
     user?: {
       id: string;
     };
-    validatedQuery?: any; // we improve later
+    validatedQuery?: GetContentQuery; // we improve later
   }
 }

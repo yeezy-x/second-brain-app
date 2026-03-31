@@ -6,3 +6,22 @@ export interface CreateContentDTO {
   url?: string;
   tags?: string[];
 }
+
+export interface ContentResponseDTO {
+  id: string;
+  type: ContentType;
+  title?: string;
+  url?: string;
+  description?: string;
+  tags: string[];
+}
+
+export interface GetContentQuery {
+  type?: ContentType;
+  tag?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface ContentService {
+  getContentByUserId(userId: string): Promise<ContentResponseDTO[]>;
+}

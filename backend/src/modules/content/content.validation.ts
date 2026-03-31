@@ -7,3 +7,10 @@ export const createContentSchema = z.object({
   url: z.string().url().optional(),
   tags: z.array(z.string()).optional(),
 });
+
+export const contentQuerySchema = z.object({
+  type: z.enum(["tweet", "video", "document", "link"]).optional(),
+  tag: z.string().optional(),
+  cursor: z.string().optional(),
+  limit: z.string().optional(),
+});

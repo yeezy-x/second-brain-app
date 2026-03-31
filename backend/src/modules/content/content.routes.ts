@@ -7,7 +7,7 @@ import {
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middlewares";
 import { createContentSchema } from "./content.validation";
-import { contentQuerySchema } from "./content.query.validation";
+import { contentQuerySchema } from "./content.validation";
 
 const contentRoutes = Router();
 contentRoutes.use(authMiddleware);

@@ -9,7 +9,8 @@ const tagSchema=new Schema<ITag>({
     name:{
         type:String,
         required: true,
-        trim: true
+        trim: true,
+        lowercase: true,
     },
     userId:{
         type: Schema.Types.ObjectId,

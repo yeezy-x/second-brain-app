@@ -1,91 +1,143 @@
+import mongoose from "mongoose";
 import { ApiError } from "../../utils/ApiError";
 import { extractMetadata } from "../../utils/metadata";
 import { Content } from "./content.model";
-import {
-  createContentRepo,
-  getContentRepo,
-  deleteContentRepo,
-} from "./content.repository";
-import { CreateContentDTO } from "./content.types";
+import { ContentType, CreateContentDTO } from "./content.types";
+import { GetContentQuery } from "./content.types";
+import { Tag } from "../tag/tag.model";
 
 export const createContentService = async (
   userId: string,
   data: CreateContentDTO
 ) => {
-  let metadata={};
-  if(data.url){
-    metadata=await extractMetadata(data.url);
+  if(!data.type){
+    throw new ApiError(400,"Content type is required");
   }
-  if (!data.type) {
-    throw new ApiError(400, "Content type required");
+  if(["video","link","tweet"].includes(data.type) && !data.url){
+    throw new ApiError(400,"URL is required for video, link and tweet content types");
   }
-  if (data.type === "video" && !data.url) {
-    throw new ApiError(400, "Video must have a URL");
+  if(["document"].includes(data.type) && !data.title){
+    throw new ApiError(400,"Title is required for document content type");
   }
-  if (data.type === "document" && !data.title) {
-    throw new ApiError(400, "Document must have a title");
-  }
-  const normalizedTags=data.tags?.map(tag => tag.trim().toLowerCase()) || [];
-  if(data.url){
-    const existing=await Content.findOne({
-      userId,
-      url: data.url
-    })
-    if(existing) return existing
-  }
-  try {
-    return await createContentRepo({
-      ...data,
-      tags: normalizedTags,
-      metadata,
-      userId,
-    });
-  } catch (err: any) {
-    if (err.code === 11000) {
-      throw new ApiError(400, "Content already exists");
+
+  const normalizedTags = [
+    ...new Set(data.tags?.map(t => t.trim().toLowerCase()))
+  ];
+  const existingTags = await Tag.find({
+    name: { $in: normalizedTags },
+    userId,
+  });
+  const existingMap = new Map(
+    existingTags.map(tag => [tag.name, tag])
+  );
+  const newTagsData = normalizedTags
+    .filter(name => !existingMap.has(name))
+    .map(name => ({ name, userId }));
+
+  const newTags = newTagsData.length?await Tag.insertMany(newTagsData): [];
+
+  const tagIds = [
+    ...existingTags.map(t => t._id),
+    ...newTags.map(t => t._id),
+  ];
+
+  const contentData = {
+    userId,
+    type: data.type,
+    title: data.title,
+    description: data.description,
+    url: data.url,
+    tags: tagIds,
+  };
+
+  try{
+    const content=await Content.create(contentData);
+    let metadata: Record<string, any> = {};
+    if(data.url){
+      try{
+        metadata = await extractMetadata(data.url);
+      }catch(error){
+        metadata = {};
+      }
     }
-    throw err;
+    return content;
+  }catch(error: any){
+    if(error.code===11000){
+      throw new ApiError(409,"Content with the same URL already exists");
+    }
+    throw error;
   }
 };
-
-export const getContentService = async (userId: string, query: any) => {
-  const { type, tag, page = 1, limit = 10 } = query;
-  const parsedLimit = Math.min(Number(limit), 50);
-  const parsedPage = Math.max(Number(page), 1);
-
-  const filter: any = { userId };
+export const getContentService = async (
+  userId: string,
+  query: GetContentQuery
+) => {
+  const { type, tag, cursor, limit = 10 } = query;
+  const parsedLimit = Math.min(Number(limit) || 10, 50);
+  const filter: any = {
+    userId: new mongoose.Types.ObjectId(userId),
+  };
   if (type) filter.type = type;
-  if (tag) filter.tags = { $in: [tag] };
-
-  const skip = (parsedPage - 1) * parsedLimit;
-
-  const [data, total] = await Promise.all([
-    Content.find(filter)
-      .lean()
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parsedLimit),
-
-    Content.countDocuments(filter),
-  ]);
-
+  if (tag) {
+    filter.tags = { $in: [tag.toLowerCase()] };
+  }
+  let cursorData: { createdAt: string; _id: string } | null = null;
+  if (cursor) {
+    try {
+      cursorData = JSON.parse(
+        Buffer.from(cursor, "base64").toString("utf-8")
+      );
+    } catch {
+      throw new Error("Invalid cursor");
+    }
+  }
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.createdAt);
+    const cursorId = new mongoose.Types.ObjectId(cursorData._id);
+    filter.$or = [
+      { createdAt: { $lt: cursorDate } },
+      {
+        createdAt: cursorDate,
+        _id: { $lt: cursorId },
+      },
+    ];
+  }
+  const data = await Content.find(filter)
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(parsedLimit)
+    .lean()
+    .select("_id title type url metadata tags createdAt");
+  let nextCursor: string | null = null;
+  if (data.length > 0) {
+    const last = data[data.length - 1];
+    nextCursor = Buffer.from(
+      JSON.stringify({
+        createdAt: last.createdAt,
+        _id: last._id,
+      })
+    ).toString("base64");
+  }
   return {
     data,
-    pagination: {
-      total,
-      page: parsedPage,
-      limit: parsedLimit,
-      pages: Math.ceil(total / parsedLimit),
-    },
+    nextCursor,
   };
 };
 export const deleteContentService = async (
   id: string,
   userId: string
 ) => {
-  const content = await deleteContentRepo(id, userId);
+  const content = await Content.findOneAndDelete({
+    _id: id,
+    userId,
+  });
   if (!content) {
     throw new ApiError(404, "Content not found");
   }
   return { success: true };
+};
+export const getContentByUserId = async (userId: string) => {
+  return Content.find({ userId })
+    .sort({ createdAt: -1 })
+    .lean()
+    .select("title type url metadata tags createdAt");
 };

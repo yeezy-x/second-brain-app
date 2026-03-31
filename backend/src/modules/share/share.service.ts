@@ -1,5 +1,5 @@
 import { ApiError } from "../../utils/ApiError";
-import { Content } from "../content/content.model";
+import { getContentByUserId } from "../content/content.service";
 import { Share } from "./share.model"
 import {nanoid} from "nanoid"
 
@@ -18,5 +18,6 @@ export const getSharedContentService = async (shareId: string) => {
   if (!share) {
     throw new ApiError(404, "Share not found");
   }
-  return Content.find({ userId: share.userId }).sort({ createdAt: -1 });
+  const content=await getContentByUserId(share.userId.toString());
+  return content;
 };

@@ -1,13 +1,17 @@
 import mongoose, { Schema, Document } from "mongoose";
-
-export interface IContent extends Document {
+import { Tag } from "../tag/tag.model";
+export interface IContent{
   userId:mongoose.Types.ObjectId;
   type:"tweet" | "video" | "document" | "link";
   title?:string;
   description?:string;
   url?: string;
-  metadata?: Record<string, any>;
-  tags: string[];
+  metadata?: {
+    title?: string;
+    description?: string;
+    image?: string;
+  };
+  tags: mongoose.Types.ObjectId[];
   createdAt: Date;
 }
 
@@ -22,20 +26,21 @@ const contentSchema = new Schema<IContent>(
     type: {
       type: String,
       enum: ["tweet", "video", "document", "link"],
-      required: true,
-      index: true,
+      required: true
     },
     title: String,
     description: String,
     url: String,
+    tags: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Tag"
+      }
+    ],
     metadata: {
-      type: Schema.Types.Mixed,
-      default: {},
-    },
-    tags: {
-      type: [String],
-      default: [],
-      index: true,
+      title: String,
+      description: String,
+      image: String,
     },
   },
   { timestamps: true }
