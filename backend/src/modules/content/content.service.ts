@@ -10,62 +10,73 @@ export const createContentService = async (
   userId: string,
   data: CreateContentDTO
 ) => {
-  if(!data.type){
-    throw new ApiError(400,"Content type is required");
-  }
-  if(["video","link","tweet"].includes(data.type) && !data.url){
-    throw new ApiError(400,"URL is required for video, link and tweet content types");
-  }
-  if(["document"].includes(data.type) && !data.title){
-    throw new ApiError(400,"Title is required for document content type");
-  }
-
-  const normalizedTags = [
-    ...new Set(data.tags?.map(t => t.trim().toLowerCase()))
-  ];
-  const existingTags = await Tag.find({
-    name: { $in: normalizedTags },
-    userId,
-  });
-  const existingMap = new Map(
-    existingTags.map(tag => [tag.name, tag])
-  );
-  const newTagsData = normalizedTags
-    .filter(name => !existingMap.has(name))
-    .map(name => ({ name, userId }));
-
-  const newTags = newTagsData.length?await Tag.insertMany(newTagsData): [];
-
-  const tagIds = [
-    ...existingTags.map(t => t._id),
-    ...newTags.map(t => t._id),
-  ];
-
-  const contentData = {
-    userId,
-    type: data.type,
-    title: data.title,
-    description: data.description,
-    url: data.url,
-    tags: tagIds,
-  };
-
-  try{
-    const content=await Content.create(contentData);
-    let metadata: Record<string, any> = {};
-    if(data.url){
-      try{
-        metadata = await extractMetadata(data.url);
-      }catch(error){
-        metadata = {};
-      }
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    if (!data.type) {
+      throw new ApiError(400, "Content type is required");
+    }
+    if (
+      ["video", "link", "tweet"].includes(data.type) &&
+      !data.url
+    ) {
+      throw new ApiError(400, "URL is required");
+    }
+    if (data.type === "document" && !data.title) {
+      throw new ApiError(400, "Title is required");
+    }
+    const normalizedTags = data.tags?.length
+      ? [...new Set(data.tags.map(t => t.trim().toLowerCase()))]
+      : [];
+    const existingTags = await Tag.find({
+      name: { $in: normalizedTags },
+      userId,
+    }).session(session);
+    const existingMap = new Map(
+      existingTags.map(tag => [tag.name, tag])
+    );
+    const newTagsData = normalizedTags
+      .filter(name => !existingMap.has(name))
+      .map(name => ({ name, userId }));
+    const newTags = newTagsData.length
+      ? await Tag.insertMany(newTagsData, { session })
+      : [];
+    const tagIds = [
+      ...existingTags.map(t => t._id),
+      ...newTags.map(t => t._id),
+    ];
+    const [content] = await Content.create(
+      [
+        {
+          userId,
+          type: data.type,
+          title: data.title,
+          description: data.description,
+          url: data.url,
+          tags: tagIds,
+        },
+      ],
+      { session }
+    );
+    await session.commitTransaction();
+    if (data.url) {
+      extractMetadata(data.url)
+        .then(async (metadata) => {
+          await Content.findByIdAndUpdate(content._id, { metadata });
+        })
+        .catch((err) => {
+          console.error("Metadata failed:", err);
+        });
     }
     return content;
-  }catch(error: any){
-    if(error.code===11000){
-      throw new ApiError(409,"Content with the same URL already exists");
+  } catch (error: any) {
+    await session.abortTransaction();
+    if (error.code === 11000) {
+      throw new ApiError(409, "Content already exists");
     }
     throw error;
+  } finally {
+    session.endSession();
   }
 };
 export const getContentService = async (

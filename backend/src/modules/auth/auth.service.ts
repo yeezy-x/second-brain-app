@@ -33,7 +33,8 @@ export const loginService=async(email:string, password:string,)=>{
     }
     const accessToken = generateAccessToken(user._id.toString());
     const refreshToken = generateRefreshToken(user._id.toString());
-    user.refreshToken = refreshToken;
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    user.refreshToken = hashedRefreshToken;
     await user.save();
     return { accessToken, refreshToken };
 }
@@ -44,11 +45,22 @@ export const refreshTokenService = async (token: string) => {
   }
   const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as { id: string };
   const user = await findUserById(decoded.id);
-  if (!user || user.refreshToken !== token) {
+  if (!user) {
+    throw new ApiError(401, "User not found");
+  }
+  const isMatch = await bcrypt.compare(token, user.refreshToken);
+  if (!isMatch) {
     throw new ApiError(401, "Invalid refresh token");
   }
   const newAccessToken = generateAccessToken(user._id.toString());
-  return { accessToken: newAccessToken };
+  const newRefreshToken = generateRefreshToken(user._id.toString());
+  const hashedNewRefreshToken = await bcrypt.hash(newRefreshToken, 10);
+  user.refreshToken = hashedNewRefreshToken;
+  await user.save();
+  return {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+  };
 };
 
 export const logoutService = async (userId: string) => {
