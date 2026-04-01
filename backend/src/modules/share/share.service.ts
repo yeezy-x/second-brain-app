@@ -18,6 +18,22 @@ export const getSharedContentService = async (shareId: string) => {
   if (!share) {
     throw new ApiError(404, "Share not found");
   }
+  if (!share.isActive) {
+    throw new ApiError(403, "Share link disabled");
+  }
+  if (share.expiresAt && share.expiresAt < new Date()) {
+    throw new ApiError(403, "Share link expired");
+  }
   const content=await getContentByUserId(share.userId.toString());
   return content;
 };
+
+export const disableShareService = async (id: string, userId: string) => {
+  const share=await Share.findOne({ _id: id, userId });
+  if(!share) {
+    throw new ApiError(404, "Share not found");
+  }
+  share.isActive=false;
+  await share.save();
+  return share
+}

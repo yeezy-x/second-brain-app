@@ -21,6 +21,7 @@ export interface GetContentQuery {
   tag?: string;
   cursor?: string;
   limit?: number;
+  search?: string;
 }
 export interface ContentService {
   getContentByUserId(userId: string): Promise<ContentResponseDTO[]>;

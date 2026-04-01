@@ -13,4 +13,5 @@ export const contentQuerySchema = z.object({
   tag: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.string().optional(),
+  search: z.string().optional()
 });

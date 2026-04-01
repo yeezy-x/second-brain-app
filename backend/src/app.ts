@@ -9,6 +9,7 @@ import contentRoutes from "./modules/content/content.routes";
 import tagRoutes from "./modules/tag/tag.routes";
 import shareRoutes from "./modules/share/share.routes";
 import { rateLimiter } from "./middlewares/rateLimiter";
+import { requestId } from "./middlewares/requestId.middleware";
 const app = express();
 
 app.use(helmet({
@@ -24,10 +25,12 @@ app.use(
     },
   })
 );
+app.use(morgan("dev"))
+app.use(requestId)
 app.use(rateLimiter)
 
 app.get("/health", (req, res) => {
-  res.json({ status: "OK" });
+  res.json({ status: "OK",uptime: process.uptime() });
 });
 
 /* test route 

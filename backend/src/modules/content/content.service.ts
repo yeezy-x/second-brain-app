@@ -1,10 +1,11 @@
 import mongoose from "mongoose";
 import { ApiError } from "../../utils/ApiError";
-import { extractMetadata } from "../../utils/metadata";
 import { Content } from "./content.model";
-import { ContentType, CreateContentDTO } from "./content.types";
+import { CreateContentDTO } from "./content.types";
 import { GetContentQuery } from "./content.types";
 import { Tag } from "../tag/tag.model";
+import { processMetadata } from "../../jobs/metadata.job";
+import { redis } from "../../config/redis";
 
 export const createContentService = async (
   userId: string,
@@ -60,13 +61,9 @@ export const createContentService = async (
     );
     await session.commitTransaction();
     if (data.url) {
-      extractMetadata(data.url)
-        .then(async (metadata) => {
-          await Content.findByIdAndUpdate(content._id, { metadata });
-        })
-        .catch((err) => {
-          console.error("Metadata failed:", err);
-        });
+      setImmediate(()=>{
+        processMetadata(content._id.toString(), data.url!)
+      })
     }
     return content;
   } catch (error: any) {
@@ -79,27 +76,47 @@ export const createContentService = async (
     session.endSession();
   }
 };
+
 export const getContentService = async (
   userId: string,
   query: GetContentQuery
 ) => {
-  const { type, tag, cursor, limit = 10 } = query;
+  const { type, tag, cursor, limit = 10, search } = query;
   const parsedLimit = Math.min(Number(limit) || 10, 50);
-  const filter: any = {
+  const cacheKey = `content:${userId}:${cursor || "first"}:${type || "all"}:${tag || "none"}`;
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error("Redis error:", err);
+  }
+  const filter: Record<string, any> = {
     userId: new mongoose.Types.ObjectId(userId),
   };
+  if(search){
+    filter.$text={$search: query.search}
+  }
   if (type) filter.type = type;
   if (tag) {
-    filter.tags = { $in: [tag.toLowerCase()] };
+    const tagDoc = await Tag.findOne({
+      name: tag.toLowerCase(),
+      userId,
+    });
+    if (!tagDoc) {
+      return { data: [], nextCursor: null };
+    }
+    filter.tags = tagDoc._id;
   }
-  let cursorData: { createdAt: string; _id: string } | null = null;
+  let cursorData = null;
   if (cursor) {
     try {
       cursorData = JSON.parse(
         Buffer.from(cursor, "base64").toString("utf-8")
       );
     } catch {
-      throw new Error("Invalid cursor");
+      throw new ApiError(400, "Invalid cursor");
     }
   }
   if (cursorData) {
@@ -114,10 +131,11 @@ export const getContentService = async (
     ];
   }
   const data = await Content.find(filter)
-    .sort({ createdAt: -1, _id: -1 })
+    .sort(query.search ? { score: { $meta: "textScore" } } : { createdAt: -1, _id: -1 })
     .limit(parsedLimit)
     .lean()
-    .select("_id title type url metadata tags createdAt");
+    .select("_id title type url metadata tags createdAt score");
+
   let nextCursor: string | null = null;
   if (data.length > 0) {
     const last = data[data.length - 1];
@@ -128,11 +146,18 @@ export const getContentService = async (
       })
     ).toString("base64");
   }
-  return {
+  const result = {
     data,
     nextCursor,
   };
+  try {
+    await redis.set(cacheKey, JSON.stringify(result), "EX", 60);
+  } catch (err) {
+    console.error("Redis set error:", err);
+  }
+  return result;
 };
+
 export const deleteContentService = async (
   id: string,
   userId: string

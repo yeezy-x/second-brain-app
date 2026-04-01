@@ -4,6 +4,8 @@ export interface IShare extends Document{
     userId: mongoose.Types.ObjectId;
     shareId: string;
     isActive: boolean;
+    expiresAt: Date;
+    visibility: "public" | "private";
 }
 
 const shareSchema=new Schema<IShare>({
@@ -22,6 +24,14 @@ const shareSchema=new Schema<IShare>({
       type: Boolean,
       default: true,
     },
+    expiresAt: {
+      type: Date
+    },
+    visibility:{
+      type:String,
+      enum:["public","private"],
+      default:"private"
+    }
 })
 
 export const Share=mongoose.model<IShare>("Share", shareSchema)

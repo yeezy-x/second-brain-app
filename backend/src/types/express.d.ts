@@ -6,14 +6,6 @@ declare module "express-serve-static-core" {
     user?: {
       id: string;
     };
-  }
-}
-
-declare module "express-serve-static-core" {
-  interface Request {
-    user?: {
-      id: string;
-    };
-    validatedQuery?: GetContentQuery; // we improve later
+    validatedQuery?: GetContentQuery; 
   }
 }

@@ -13,6 +13,7 @@ export interface IContent{
   };
   tags: mongoose.Types.ObjectId[];
   createdAt: Date;
+  metadataStatus: "pending" | "done" | "failed";
 }
 
 const contentSchema = new Schema<IContent>(
@@ -42,6 +43,12 @@ const contentSchema = new Schema<IContent>(
       description: String,
       image: String,
     },
+    metadataStatus:{
+      type: String,
+      enum: ["pending", "done", "failed"],
+      default: "pending"
+    }
+
   },
   { timestamps: true }
 );
@@ -53,5 +60,9 @@ contentSchema.index(
   { userId: 1, url: 1 },
   { unique: true, sparse: true }
 );
+contentSchema.index({
+  title:"text",
+  description:"text"
+})
 
 export const Content = mongoose.model<IContent>("Content", contentSchema);
