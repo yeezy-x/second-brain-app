@@ -34,8 +34,8 @@ const shareSchema=new Schema<IShare>({
     }
 })
 
-shareSchema.index({ shareId: 1 }, { unique: true });
-shareSchema.index({ userId: 1 });
+/* shareSchema.index({ shareId: 1 });
+shareSchema.index({ userId: 1 }); */
 shareSchema.index({ userId: 1, isActive: 1 });
 
 export const Share=mongoose.model<IShare>("Share", shareSchema)

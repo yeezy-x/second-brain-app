@@ -1,50 +1,45 @@
-import { rateLimit } from "express-rate-limit";
-import RedisStore from "rate-limit-redis"
-import { Request, Response } from "express";
+import { Request, Response, NextFunction } from "express";
 import { redis } from "../config/redis";
-import { Command } from "ioredis";
-import type { Store } from "express-rate-limit";
-import { ipKeyGenerator } from "express-rate-limit";
+import { ApiError } from "../utils/ApiError";
 
-const createStore = (prefix: string): Store =>
-  new RedisStore({
-    sendCommand: (...args: string[]) =>
-      redis.sendCommand(
-        new Command(args[0], args.slice(1))
-      ) as unknown as Promise<any>,
-    prefix,
-  }) as unknown as Store;
+type Options = {
+  window: number; 
+  limit: number;
+  prefix: string;
+};
 
-export const rateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  store: createStore("rl:global"),
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) =>
-  ipKeyGenerator(req.ip || req.socket.remoteAddress || ""),
+const getClientKey = (req: Request) => {
+  return req.ip || req.socket.remoteAddress || "unknown";
+};
 
-  handler: (req: Request, res: Response) => {
-    res.status(429).json({
-      success: false,
-      message: "Too many requests, please try again later",
-      requestId: (req as any).id,
-    });
-  },
+export const createRateLimiter = (options: Options) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const key = `${options.prefix}:${getClientKey(req)}`;
+    try {
+      const count = await redis.incr(key);
+      if (count === 1) {
+        await redis.expire(key, options.window);
+      }
+      if (count > options.limit) {
+        return next(
+          new ApiError(429, "Too many requests, please try again later")
+        );
+      }
+      return next();
+    } catch (err) {
+      return next();
+    }
+  };
+};
+
+export const authRateLimiter = createRateLimiter({
+  window: 60 * 60, 
+  limit: 10,
+  prefix: "rl:auth",
 });
 
-export const authRateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 10,
-  store: createStore("rl:auth"),
-  standardHeaders: true,
-  legacyHeaders: false,
-
-  handler: (req: Request, res: Response) => {
-    res.status(429).json({
-      success: false,
-      message: "Too many auth attempts. Try again later.",
-      requestId: (req as any).id,
-    });
-  },
+export const rateLimiter = createRateLimiter({
+  window: 15 * 60, 
+  limit: 100,
+  prefix: "rl:global",
 });

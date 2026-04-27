@@ -52,7 +52,7 @@ export const contentSchema = new Schema<IContent>(
   { timestamps: true }
 );
 
-contentSchema.index({ userId: 1 });
+/*contentSchema.index({ userId: 1 }); */
 contentSchema.index({ userId: 1, createdAt: -1, _id: 1 });
 contentSchema.index({ userId: 1, type: 1, createdAt: -1, _id: 1 });
 contentSchema.index({ userId: 1, tags: 1, createdAt: -1, _id: 1 });

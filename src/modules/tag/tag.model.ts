@@ -20,7 +20,7 @@ const tagSchema=new Schema<ITag>({
     }
 },{timestamps: true});
 
-tagSchema.index({userId: 1})
+/* tagSchema.index({userId: 1})*/
 tagSchema.index({ name: 1, userId: 1 }, { unique: true });
 
 export const Tag = mongoose.model<ITag>("Tag", tagSchema);
