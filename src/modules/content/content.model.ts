@@ -56,10 +56,10 @@ export const contentSchema = new Schema<IContent>(
 contentSchema.index({ userId: 1, createdAt: -1, _id: 1 });
 contentSchema.index({ userId: 1, type: 1, createdAt: -1, _id: 1 });
 contentSchema.index({ userId: 1, tags: 1, createdAt: -1, _id: 1 });
-contentSchema.index({ userId: 1, url: 1 },{
-    unique: true,
-    partialFilterExpression: { url: { $exists: true, $ne: null } },
-  });
+contentSchema.index(
+  { userId: 1, url: 1 },
+  {partialFilterExpression: {url: { $type: "string" }}}
+);
 contentSchema.index(
   { userId: 1, title: "text", description: "text" },
   { weights: { title: 5, description: 2 } }

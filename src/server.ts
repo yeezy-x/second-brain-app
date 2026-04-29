@@ -3,11 +3,11 @@ import { connectDB } from './config/db';
 import { env } from './config/env';
 import { logger } from './core/logger';
 
+
 let server: any;
 const startServer = async () => {
   try {
     await connectDB();
-
     server = app.listen(env.PORT, () => {
       logger.info(`🚀 Server running on port ${env.PORT}`);
     });

@@ -39,7 +39,9 @@ app.use(express.json({ limit:"10kb"})); // why limit the body size?
 // or even crashing the server. By setting a reasonable limit (like 10kb), we 
 // can protect the server from such attacks while still allowing legitimate 
 // requests to be processed effectively.
-app.use(rateLimiter);
+if (process.env.NODE_ENV !== "test") {
+  app.use(rateLimiter);
+}
 app.use(
   morgan("combined", {
     stream: {

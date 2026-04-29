@@ -39,14 +39,10 @@ export const contentQuerySchema = z
     tag: z.string().trim().max(30).optional(),
     cursor: z.string().optional(), 
     limit: z
-      .string()
-      .refine((val) => !isNaN(Number(val)), {
-        message: "Limit must be a number",
-      })
-      .transform((val) => Number(val))
-      .refine((val) => val > 0 && val <= 50, {
-        message: "Limit must be between 1 and 50",
-      }),
+      .coerce.number()    
+      .min(1)
+      .max(50)
+      .default(10),
     search: z.string().trim().max(100).optional(),
   })
   .strict();

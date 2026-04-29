@@ -9,8 +9,11 @@ import { CreateContentDTO, GetContentQuery } from "./content.types";
 import { metadataQueue } from "../../jobs/queue"
 import { redis } from "../../config/redis";
 import { logger } from "../../core/logger";
+
 const hash = (obj: any) =>
   crypto.createHash("md5").update(JSON.stringify(obj)).digest("hex");
+
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 const withTimeout = async (promise: Promise<any>, ms = 100) => {
   return Promise.race([
@@ -25,19 +28,23 @@ export const createContentService = async (
   userId: string,
   data: CreateContentDTO
 ) => {
+  const url =
+    typeof data.url === "string" && data.url.trim() !== ""
+      ? data.url.trim().toLowerCase()
+      : undefined;
+  const tags = data.tags || [];
+  const tagDocs = await Promise.all(
+    tags.map((name) =>
+      Tag.findOneAndUpdate(
+        { name: name.toLowerCase(), userId },
+        { $setOnInsert: { name: name.toLowerCase(), userId } },
+        { upsert: true, new: true }
+      )
+    )
+  );
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
-    const tags = data.tags || [];
-    const tagDocs = await Promise.all(
-      tags.map((name) =>
-        Tag.findOneAndUpdate(
-          { name, userId },
-          { $setOnInsert: { name, userId } },
-          { upsert: true, new: true, session }
-        )
-      )
-    );
     const [content] = await Content.create(
       [
         {
@@ -45,7 +52,7 @@ export const createContentService = async (
           type: data.type,
           title: data.title,
           description: data.description,
-          url: data.url,
+          url,
           tags: tagDocs.map((t) => t._id),
         },
       ],
@@ -54,15 +61,17 @@ export const createContentService = async (
     await session.commitTransaction();
     await redis.incr(`version:${userId}`);
     await redis.expire(`version:${userId}`, 3600);
-    if (data.url) {
+    const jobId = crypto.createHash("sha256").update(`${userId}:${url}`).digest("hex");
+    if (url) {
       await metadataQueue.add(
         "process-metadata",
         {
           contentId: content._id.toString(),
-          url: data.url,
+          url,
         },
         {
-          attempts: 3, 
+          jobId,
+          attempts: 3,
           backoff: {
             type: "exponential",
             delay: 2000,
@@ -74,75 +83,114 @@ export const createContentService = async (
     }
     return content;
   } catch (error: any) {
-    await session.abortTransaction();
-    if (error.code === 11000) {
-      throw new ApiError(409, "Content already exists");
-    }
     logger.error({ err: error }, "createContentService failed");
     throw error;
   } finally {
     session.endSession();
   }
 };
-
 export const getContentService = async (
   userId: string,
   query: GetContentQuery
 ) => {
-  const { type, tag, cursor, limit = 10, search } = query;
-  const parsedLimit = Math.min(Number(limit) || 10, 50);
-  const version = await redis.get(`version:${userId}`);
-  const cacheKey = `content:${userId}:${version || "v0"}:${hash({
+  const { type, tag, cursor, limit, search } = query;
+
+  // ❌ prevent broken pagination
+  if (search && cursor) {
+    throw new ApiError(400, "Cursor pagination not supported with search");
+  }
+
+  const parsedLimit = limit;
+  const useCache = !search;
+
+  /* // 🔥 Non-blocking version fetch
+  const versionPromise = redis
+    .get(`version:${userId}`)
+    .catch(() => null);*/
+
+  // 🔥 Build cache key early
+  /* const cacheKeyBase = {
     cursor,
     type,
     tag,
     search,
     limit: parsedLimit,
-  })}`;
-  const lockKey = `lock:${cacheKey}`;
-  try {
-    const cached = await withTimeout(redis.get(cacheKey));
-    if (cached) {
-      logger.info({ cache: "hit", key: cacheKey });
-      return JSON.parse(cached);
+  };*/
+
+  //let version: string | null = null;
+
+  if (useCache) {
+    const cacheKey = `content:${userId}:${hash({
+        cursor,
+        type,
+        tag,
+        search,
+        limit,
+      })}`;
+
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        logger.info({ cache: "hit", key: cacheKey });
+        return JSON.parse(cached);
+      }
+    } catch {
+      logger.warn("Redis read failed, fallback to DB");
     }
-  } catch {
-    logger.warn("Redis unavailable, fallback to DB");
   }
 
-  const lock = await redis.set(lockKey, "1", "EX", 5, "NX");
-  if (!lock) {
-    logger.info({ cache: "waiting", key: cacheKey });
-  }
-
+  // 🔥 Build DB filter
   const filter: Record<string, any> = {
     userId: new mongoose.Types.ObjectId(userId),
   };
+
   if (search) filter.$text = { $search: search };
   if (type) filter.type = type;
+
+  // 🔥 Tag resolution (non-blocking Redis)
   if (tag) {
-    const tagDoc = await Tag.findOne({
-      name: tag.toLowerCase(),
-      userId,
-    });
-    if (!tagDoc) {
-      return { data: [], nextCursor: null };
+    const tagCacheKey = `tag:${userId}:${tag.toLowerCase()}`;
+    let tagId: string | null = null;
+
+    try {
+      tagId = await redis.get(tagCacheKey);
+    } catch {}
+
+    if (!tagId) {
+      const tagDoc = await Tag.findOne({
+        name: tag.toLowerCase(),
+        userId,
+      }).lean();
+
+      if (!tagDoc) {
+        return { data: [], nextCursor: null };
+      }
+
+      tagId = tagDoc._id.toString();
+
+      // async cache write (don’t await)
+      redis.set(tagCacheKey, tagId, "EX", 3600).catch(() => {});
     }
-    filter.tags = tagDoc._id;
+
+    filter.tags = new mongoose.Types.ObjectId(tagId);
   }
 
+  // 🔥 Cursor decoding
   let cursorData: { createdAt: string; _id: string } | null = null;
+
   if (cursor) {
     try {
       const parsed = JSON.parse(
         Buffer.from(cursor, "base64").toString("utf-8")
       );
+
       if (
         typeof parsed._id !== "string" ||
         typeof parsed.createdAt !== "string"
       ) {
         throw new Error();
       }
+
       cursorData = parsed;
     } catch {
       throw new ApiError(400, "Invalid cursor");
@@ -152,58 +200,77 @@ export const getContentService = async (
   if (cursorData) {
     const cursorDate = new Date(cursorData.createdAt);
     const cursorId = new mongoose.Types.ObjectId(cursorData._id);
+
     filter.$or = [
       { createdAt: { $lt: cursorDate } },
-      {
-        createdAt: cursorDate,
-        _id: { $lt: cursorId },
-      },
+      { createdAt: cursorDate, _id: { $lt: cursorId } },
     ];
   }
 
+  // 🔥 Query
   const queryBuilder = Content.find(filter)
-    .limit(parsedLimit)
+    .limit(parsedLimit + 1) // 👈 important
     .lean();
+
   if (search) {
-    queryBuilder.sort({ score: { $meta: "textScore" } });
-    queryBuilder.select({
-      score: { $meta: "textScore" },
-      _id: 1,
-      title: 1,
-      type: 1,
-      url: 1,
-      metadata: 1,
-      tags: 1,
-      createdAt: 1,
-    });
+    queryBuilder
+      .sort({ score: { $meta: "textScore" } })
+      .select({
+        score: { $meta: "textScore" },
+        _id: 1,
+        title: 1,
+        type: 1,
+        url: 1,
+        metadata: 1,
+        tags: 1,
+        createdAt: 1,
+      });
   } else {
     queryBuilder
       .sort({ createdAt: -1, _id: -1 })
-      .select("_id title type url metadata tags createdAt");
+      .select("_id title type url tags createdAt");
   }
 
-  const data = await queryBuilder;
+  const results = await queryBuilder;
+
+  // 🔥 Pagination handling
   let nextCursor: string | null = null;
-  if (data.length > 0) {
-    const last = data[data.length - 1];
+  let data = results;
+
+  if (!search && results.length > parsedLimit) {
+    const last = results[parsedLimit - 1];
+
     nextCursor = Buffer.from(
       JSON.stringify({
         createdAt: last.createdAt,
         _id: last._id,
       })
     ).toString("base64");
+
+    data = results.slice(0, parsedLimit);
   }
 
-  const result = { data, nextCursor };
-  const ttl = 60 + Math.floor(Math.random() * 20);
-  try {
-    await redis.set(cacheKey, JSON.stringify(result), "EX", ttl);
-    logger.info({ cache: "set", key: cacheKey });
-  } catch (err) {
-    logger.error({ err }, "Redis write failed");
+  const response = { data, nextCursor };
+
+  // 🔥 Async cache write (non-blocking)
+  if (useCache) {
+    const cacheKey = `content:${userId}:${hash({
+      cursor,
+      type,
+      tag,
+      search,
+      limit,
+    })}`;
+
+    const ttl = 60 + Math.floor(Math.random() * 20);
+
+    redis
+      .set(cacheKey, JSON.stringify(response), "EX", ttl)
+      .then(() => logger.info({ cache: "set", key: cacheKey }))
+      .catch(() => {});
   }
-  await redis.del(lockKey);
-  return result;
+
+  return response;
 };
 
 export const deleteContentService = async (

@@ -34,7 +34,7 @@ export const createRateLimiter = (options: Options) => {
 
 export const authRateLimiter = createRateLimiter({
   window: 60 * 60, 
-  limit: 10,
+  limit: 100,
   prefix: "rl:auth",
 });
 
