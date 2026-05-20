@@ -1,0 +1,128 @@
+import * as React from "react";
+import { ExternalLink, Trash2, X, Video, FileText, Link2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useDeleteContent } from "@/features/content/hooks/useDeleteContent";
+import { useTagNameMap } from "@/features/tags/hooks/useTags";
+import type { ContentItem, ContentType } from "@/features/content/types";
+import { formatRelativeDate, safeUrlHostname } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/error";
+import { toast } from "sonner";
+
+const TYPE_META: Record<
+  ContentType,
+  { label: string; icon: React.ComponentType<{ className?: string }>; tone: "accent" | "muted" | "neutral" | "success" }
+> = {
+  tweet: { label: "Tweet", icon: X, tone: "accent" },
+  video: { label: "Video", icon: Video, tone: "accent" },
+  document: { label: "Document", icon: FileText, tone: "neutral" },
+  link: { label: "Link", icon: Link2, tone: "muted" },
+};
+
+export function ContentCard({ item }: { item: ContentItem }) {
+  const meta = TYPE_META[item.type];
+  const TypeIcon = meta.icon;
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const tagMap = useTagNameMap();
+  const del = useDeleteContent();
+
+  const tagNames = React.useMemo(
+    () => item.tags.map((id) => tagMap[id]).filter((n): n is string => Boolean(n)),
+    [item.tags, tagMap]
+  );
+
+  const handleDelete = async () => {
+    try {
+      await del.mutateAsync(item._id);
+      toast.success("Content deleted");
+      setConfirmOpen(false);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  return (
+    <li
+      data-testid={`content-card-${item._id}`}
+      className="group relative animate-fade-in rounded-lg border border-border bg-bg-elev/70 p-4 transition-colors hover:border-muted-fg/30 hover:bg-bg-elev"
+    >
+      <div className="flex items-start gap-3">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-border bg-bg-elev-2 text-muted-fg">
+          <TypeIcon className="h-4 w-4" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={meta.tone}>{meta.label}</Badge>
+            <span className="text-xs text-muted-fg">
+              {formatRelativeDate(item.createdAt)}
+            </span>
+            {item.url ? (
+              <span className="text-xs text-muted-fg/80" title={item.url}>
+                · {safeUrlHostname(item.url)}
+              </span>
+            ) : null}
+          </div>
+
+          <h3
+            className="mt-1.5 truncate text-[15px] font-semibold text-fg"
+            title={item.title}
+          >
+            {item.title || <span className="text-muted-fg italic">Untitled</span>}
+          </h3>
+
+          {tagNames.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {tagNames.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center rounded-full border border-border bg-bg-elev-2 px-2 py-0.5 text-[11px] text-muted-fg"
+                >
+                  #{t}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          {item.url ? (
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              aria-label="Open link"
+              data-testid={`open-content-${item._id}`}
+            >
+              <a href={item.url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Delete content"
+            onClick={() => setConfirmOpen(true)}
+            data-testid={`delete-content-btn-${item._id}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Delete this item?"
+        description="This action can't be undone. The item will be removed from your second brain immediately."
+        confirmLabel="Delete"
+        destructive
+        loading={del.isPending}
+        onConfirm={handleDelete}
+        testIdPrefix={`delete-${item._id}`}
+      />
+    </li>
+  );
+}

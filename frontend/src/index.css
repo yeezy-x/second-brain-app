@@ -1,0 +1,128 @@
+@import url("https://rsms.me/inter/inter.css");
+@import url("https://api.fontshare.com/v2/css?f[]=geist@400,500,600,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@import "tailwindcss";
+
+@theme {
+  --color-bg: hsl(240 8% 4%);
+  --color-bg-elev: hsl(240 7% 7%);
+  --color-bg-elev-2: hsl(240 6% 10%);
+  --color-fg: hsl(220 16% 96%);
+  --color-muted: hsl(240 5% 14%);
+  --color-muted-fg: hsl(240 5% 64%);
+  --color-border: hsl(240 6% 16%);
+  --color-ring: hsl(192 95% 60%);
+  --color-accent: hsl(192 95% 56%);
+  --color-accent-fg: hsl(240 10% 4%);
+  --color-accent-soft: hsl(192 80% 14%);
+  --color-success: hsl(152 60% 52%);
+  --color-warn: hsl(38 95% 60%);
+  --color-danger: hsl(0 75% 60%);
+  --color-danger-fg: hsl(0 0% 100%);
+
+  --radius-lg: 12px;
+}
+
+@layer base {
+  :root {
+    --bg: 240 8% 4%;
+    --bg-elev: 240 7% 7%;
+    --bg-elev-2: 240 6% 10%;
+    --fg: 220 16% 96%;
+    --muted: 240 5% 14%;
+    --muted-fg: 240 5% 64%;
+    --border: 240 6% 16%;
+    --ring: 192 95% 60%;
+    --accent: 192 95% 56%;
+    --accent-fg: 240 10% 4%;
+    --accent-soft: 192 80% 14%;
+    --success: 152 60% 52%;
+    --warn: 38 95% 60%;
+    --danger: 0 75% 60%;
+    --danger-fg: 0 0% 100%;
+    --radius: 12px;
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+  }
+
+  body {
+    font-family:
+      "InterVariable",
+      "Inter",
+      ui-sans-serif,
+      system-ui,
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    background-color: hsl(var(--bg));
+    color: hsl(var(--fg));
+    background-image:
+      radial-gradient(60% 40% at 80% -10%, hsl(var(--accent) / 0.10) 0%, transparent 60%),
+      radial-gradient(50% 35% at 0% 110%, hsl(238 80% 60% / 0.10) 0%, transparent 60%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: hsl(var(--accent) / 0.25);
+    color: hsl(var(--fg));
+  }
+
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.7);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Custom scrollbars */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid hsl(var(--bg));
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-fg) / 0.4); }
+}
+
+@layer components {
+  .glass {
+    background: hsl(var(--bg-elev) / 0.65);
+    backdrop-filter: saturate(140%) blur(18px);
+    -webkit-backdrop-filter: saturate(140%) blur(18px);
+    border: 1px solid hsl(var(--border));
+  }
+
+  .grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.04;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.6'/></svg>");
+  }
+
+  .btn-glow {
+    box-shadow:
+      0 1px 0 0 hsl(var(--accent) / 0.6) inset,
+      0 8px 32px -10px hsl(var(--accent) / 0.45);
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--bg-elev-2)) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
