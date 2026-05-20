@@ -69,7 +69,8 @@ export function ShareDialog({ open, onOpenChange }: Props) {
   return () => {
     mounted = false;
   };
-}, [open, create]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [open]);
 
   const shareUrl = share
     ? `${window.location.origin}/share/${share.shareId}`
