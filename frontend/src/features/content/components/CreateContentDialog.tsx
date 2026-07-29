@@ -52,14 +52,7 @@ export function CreateContentDialog({ open, onOpenChange }: Props) {
   const create = useCreateContent();
 
   const {
-    control,
-    register,
-    handleSubmit,
-    reset,
-    setError,
-    setValue,
-    formState: { errors, isSubmitting },
-  } = useForm<CreateContentFormValues>({
+    control,register,handleSubmit,reset,setError,setValue,formState: { errors, isSubmitting }} = useForm<CreateContentFormValues>({
     resolver: zodResolver(createContentFormSchema),
     defaultValues: {
       type: "link",

@@ -17,7 +17,7 @@ if (!import.meta.env.VITE_API_BASE_URL && import.meta.env.PROD) {
 
 type RetriableConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
-  _skipAuthRefresh?: boolean;
+  _skipAuthRefresh?: boolean
 };
 
 /* ──────────────────────────────────────────────────────────────────────────
