@@ -1,4 +1,4 @@
-import { ZodTypeAny, ZodError } from "zod";
+import { ZodTypeAny } from "zod";
 import { Request, Response, NextFunction } from "express";
 
 const validate =

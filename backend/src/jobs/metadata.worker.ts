@@ -1,27 +1,17 @@
 import { Worker } from "bullmq";
-import IORedis from "ioredis";
-import mongoose from "mongoose";
+import Redis from "ioredis";
 import { processMetadata } from "./metadata.job";
 import { logger } from "../core/logger";
 import { METADATA_QUEUE } from "./queue";
 import { env } from "../config/env";
+import { connectDB } from "../config/db";
 
-const connection = new IORedis({
-  host: env.REDIS_HOST || "127.0.0.1",
-  port: Number(env.REDIS_PORT) || 6379,
-  maxRetriesPerRequest: null,
-});
+const connection = new Redis(env.REDIS_URL!);
 
 const startWorker = async () => {
   try {
-    await mongoose.connect(env.MONGO_URI);
-    logger.info("✅ MongoDB connected (worker)");
-    mongoose.connection.on("error", (err) => {
-      logger.error({ err }, "MongoDB error");
-    });
-    mongoose.connection.on("disconnected", () => {
-      logger.error("MongoDB disconnected");
-    });
+    await connectDB();
+    logger.info("✅ Postgres connected (worker)");
 
     const worker = new Worker(
       METADATA_QUEUE,
@@ -53,7 +43,7 @@ const startWorker = async () => {
     logger.info("🚀 Metadata worker started");
   } catch (err) {
     logger.error({ err }, "Worker startup failed");
-    process.exit(1); 
+    process.exit(1);
   }
 };
 

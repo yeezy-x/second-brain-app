@@ -48,8 +48,5 @@ export const contentQuerySchema = z
   .strict();
 
 export const contentIdSchema = z.object({
-  id: z
-    .string()
-    .length(24)
-    .regex(/^[a-fA-F0-9]{24}$/, "Invalid ID format"),
+  id: z.string().uuid("Invalid ID format"),
 });

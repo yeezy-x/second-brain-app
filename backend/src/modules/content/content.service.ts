@@ -1,27 +1,26 @@
-import mongoose from "mongoose";
+import { Prisma } from "@prisma/client";
 import crypto from "crypto";
 
 import { ApiError } from "../../utils/ApiError";
-import { Content } from "./content.model";
-import { Tag } from "../tag/tag.model";
+import { prisma } from "../../config/db";
 import { CreateContentDTO, GetContentQuery } from "./content.types";
 
-import { metadataQueue } from "../../jobs/queue"
+import { metadataQueue } from "../../jobs/queue";
 import { redis } from "../../config/redis";
 import { logger } from "../../core/logger";
 
-const hash = (obj: any) =>
+const hash = (obj: unknown) =>
   crypto.createHash("md5").update(JSON.stringify(obj)).digest("hex");
 
-const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-const withTimeout = async (promise: Promise<any>, ms = 100) => {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Redis timeout")), ms)
-    ),
-  ]);
+const mapContent = <T extends { id: string; tags?: { tag: { id: string; name: string } }[] }>(
+  content: T
+) => {
+  const { tags, ...rest } = content;
+  return {
+    ...rest,
+    _id: content.id,
+    tags: tags?.map((t) => t.tag) ?? undefined,
+  };
 };
 
 export const createContentService = async (
@@ -33,40 +32,54 @@ export const createContentService = async (
       ? data.url.trim().toLowerCase()
       : undefined;
   const tags = data.tags || [];
-  const tagDocs = await Promise.all(
-    tags.map((name) =>
-      Tag.findOneAndUpdate(
-        { name: name.toLowerCase(), userId },
-        { $setOnInsert: { name: name.toLowerCase(), userId } },
-        { upsert: true, new: true }
-      )
-    )
-  );
-  const session = await mongoose.startSession();
+
   try {
-    session.startTransaction();
-    const [content] = await Content.create(
-      [
-        {
+    const content = await prisma.$transaction(async (tx) => {
+      const tagDocs = await Promise.all(
+        tags.map((name) =>
+          tx.tag.upsert({
+            where: {
+              name_userId: { name: name.toLowerCase(), userId },
+            },
+            create: { name: name.toLowerCase(), userId },
+            update: {},
+          })
+        )
+      );
+
+      return tx.content.create({
+        data: {
           userId,
           type: data.type,
           title: data.title,
           description: data.description,
           url,
-          tags: tagDocs.map((t) => t._id),
+          tags: {
+            create: tagDocs.map((t) => ({ tagId: t.id })),
+          },
         },
-      ],
-      { session }
-    );
-    await session.commitTransaction();
-    await redis.incr(`version:${userId}`);
-    await redis.expire(`version:${userId}`, 3600);
-    const jobId = crypto.createHash("sha256").update(`${userId}:${url}`).digest("hex");
+        include: {
+          tags: { include: { tag: true } },
+        },
+      });
+    });
+
+    try {
+      await redis.incr(`version:${userId}`);
+      await redis.expire(`version:${userId}`, 3600);
+    } catch {
+      logger.warn("Redis version bump failed");
+    }
+
     if (url) {
+      const jobId = crypto
+        .createHash("sha256")
+        .update(`${userId}:${url}`)
+        .digest("hex");
       await metadataQueue.add(
         "process-metadata",
         {
-          contentId: content._id.toString(),
+          contentId: content.id,
           url,
         },
         {
@@ -81,21 +94,20 @@ export const createContentService = async (
         }
       );
     }
-    return content;
-  } catch (error: any) {
+
+    return mapContent(content);
+  } catch (error) {
     logger.error({ err: error }, "createContentService failed");
     throw error;
-  } finally {
-    session.endSession();
   }
 };
+
 export const getContentService = async (
   userId: string,
   query: GetContentQuery
 ) => {
   const { type, tag, cursor, limit, search } = query;
 
-  // ❌ prevent broken pagination
   if (search && cursor) {
     throw new ApiError(400, "Cursor pagination not supported with search");
   }
@@ -103,30 +115,14 @@ export const getContentService = async (
   const parsedLimit = limit;
   const useCache = !search;
 
-  /* // 🔥 Non-blocking version fetch
-  const versionPromise = redis
-    .get(`version:${userId}`)
-    .catch(() => null);*/
-
-  // 🔥 Build cache key early
-  /* const cacheKeyBase = {
-    cursor,
-    type,
-    tag,
-    search,
-    limit: parsedLimit,
-  };*/
-
-  //let version: string | null = null;
-
   if (useCache) {
     const cacheKey = `content:${userId}:${hash({
-        cursor,
-        type,
-        tag,
-        search,
-        limit,
-      })}`;
+      cursor,
+      type,
+      tag,
+      search,
+      limit,
+    })}`;
 
     try {
       const cached = await redis.get(cacheKey);
@@ -139,15 +135,17 @@ export const getContentService = async (
     }
   }
 
-  // 🔥 Build DB filter
-  const filter: Record<string, any> = {
-    userId: new mongoose.Types.ObjectId(userId),
-  };
+  const where: Prisma.ContentWhereInput = { userId };
 
-  if (search) filter.$text = { $search: search };
-  if (type) filter.type = type;
+  if (type) where.type = type;
 
-  // 🔥 Tag resolution (non-blocking Redis)
+  if (search) {
+    where.OR = [
+      { title: { contains: search, mode: "insensitive" } },
+      { description: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
   if (tag) {
     const tagCacheKey = `tag:${userId}:${tag.toLowerCase()}`;
     let tagId: string | null = null;
@@ -157,26 +155,24 @@ export const getContentService = async (
     } catch {}
 
     if (!tagId) {
-      const tagDoc = await Tag.findOne({
-        name: tag.toLowerCase(),
-        userId,
-      }).lean();
+      const tagDoc = await prisma.tag.findUnique({
+        where: {
+          name_userId: { name: tag.toLowerCase(), userId },
+        },
+      });
 
       if (!tagDoc) {
         return { data: [], nextCursor: null };
       }
 
-      tagId = tagDoc._id.toString();
-
-      // async cache write (don’t await)
+      tagId = tagDoc.id;
       redis.set(tagCacheKey, tagId, "EX", 3600).catch(() => {});
     }
 
-    filter.tags = new mongoose.Types.ObjectId(tagId);
+    where.tags = { some: { tagId } };
   }
 
-  // 🔥 Cursor decoding
-  let cursorData: { createdAt: string; _id: string } | null = null;
+  let cursorData: { createdAt: string; id: string } | null = null;
 
   if (cursor) {
     try {
@@ -185,7 +181,7 @@ export const getContentService = async (
       );
 
       if (
-        typeof parsed._id !== "string" ||
+        typeof parsed.id !== "string" ||
         typeof parsed.createdAt !== "string"
       ) {
         throw new Error();
@@ -199,60 +195,57 @@ export const getContentService = async (
 
   if (cursorData) {
     const cursorDate = new Date(cursorData.createdAt);
-    const cursorId = new mongoose.Types.ObjectId(cursorData._id);
-
-    filter.$or = [
-      { createdAt: { $lt: cursorDate } },
-      { createdAt: cursorDate, _id: { $lt: cursorId } },
+    where.AND = [
+      {
+        OR: [
+          { createdAt: { lt: cursorDate } },
+          {
+            AND: [
+              { createdAt: cursorDate },
+              { id: { lt: cursorData.id } },
+            ],
+          },
+        ],
+      },
     ];
   }
 
-  // 🔥 Query
-  const queryBuilder = Content.find(filter)
-    .limit(parsedLimit + 1) // 👈 important
-    .lean();
+  const results = await prisma.content.findMany({
+    where,
+    take: parsedLimit + 1,
+    orderBy: search
+      ? [{ createdAt: "desc" }, { id: "desc" }]
+      : [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      url: true,
+      metadata: search ? true : false,
+      tags: { include: { tag: { select: { id: true, name: true } } } },
+      createdAt: true,
+    },
+  });
 
-  if (search) {
-    queryBuilder
-      .sort({ score: { $meta: "textScore" } })
-      .select({
-        score: { $meta: "textScore" },
-        _id: 1,
-        title: 1,
-        type: 1,
-        url: 1,
-        metadata: 1,
-        tags: 1,
-        createdAt: 1,
-      });
-  } else {
-    queryBuilder
-      .sort({ createdAt: -1, _id: -1 })
-      .select("_id title type url tags createdAt");
-  }
-
-  const results = await queryBuilder;
-
-  // 🔥 Pagination handling
   let nextCursor: string | null = null;
   let data = results;
 
   if (!search && results.length > parsedLimit) {
     const last = results[parsedLimit - 1];
-
     nextCursor = Buffer.from(
       JSON.stringify({
         createdAt: last.createdAt,
-        _id: last._id,
+        id: last.id,
       })
     ).toString("base64");
-
     data = results.slice(0, parsedLimit);
   }
 
-  const response = { data, nextCursor };
+  const response = {
+    data: data.map(mapContent),
+    nextCursor,
+  };
 
-  // 🔥 Async cache write (non-blocking)
   if (useCache) {
     const cacheKey = `content:${userId}:${hash({
       cursor,
@@ -261,9 +254,7 @@ export const getContentService = async (
       search,
       limit,
     })}`;
-
     const ttl = 60 + Math.floor(Math.random() * 20);
-
     redis
       .set(cacheKey, JSON.stringify(response), "EX", ttl)
       .then(() => logger.info({ cache: "set", key: cacheKey }))
@@ -273,25 +264,37 @@ export const getContentService = async (
   return response;
 };
 
-export const deleteContentService = async (
-  id: string,
-  userId: string
-) => {
-  const content = await Content.findOneAndDelete({
-    _id: id,
-    userId,
+export const deleteContentService = async (id: string, userId: string) => {
+  const result = await prisma.content.deleteMany({
+    where: { id, userId },
   });
-  if (!content) {
+  if (result.count === 0) {
     throw new ApiError(404, "Content not found");
   }
-  await redis.incr(`version:${userId}`);
-  await redis.expire(`version:${userId}`, 3600);
+
+  try {
+    await redis.incr(`version:${userId}`);
+    await redis.expire(`version:${userId}`, 3600);
+  } catch {
+    logger.warn("Redis version bump failed");
+  }
+
   return { success: true };
 };
 
 export const getContentByUserId = async (userId: string) => {
-  return Content.find({ userId })
-    .sort({ createdAt: -1 })
-    .lean()
-    .select("title type url metadata tags createdAt");
+  const contents = await prisma.content.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      url: true,
+      metadata: true,
+      tags: { include: { tag: { select: { id: true, name: true } } } },
+      createdAt: true,
+    },
+  });
+  return contents.map(mapContent);
 };

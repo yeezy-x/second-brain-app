@@ -1,37 +1,42 @@
+import { Prisma } from "@prisma/client";
 import { ApiError } from "../../utils/ApiError";
-import { Tag } from "./tag.model";
+import { prisma } from "../../config/db";
 import { redis } from "../../config/redis";
 import { logger } from "../../core/logger";
 
 export const createTagService = async (userId: string, name: string) => {
   try {
-    const tag = await Tag.create({ name, userId });
+    const tag = await prisma.tag.create({
+      data: { name: name.toLowerCase(), userId },
+    });
     try {
       await redis.del(`tags:${userId}`);
-    } catch (err) {
+    } catch {
       logger.warn({
         message: "Redis DEL failed",
         key: `tags:${userId}`,
       });
     }
-    return tag;
-  } catch (err: any) {
-    if (err.code === 11000) {
+    return { ...tag, _id: tag.id };
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
       throw new ApiError(400, "Tag already exists");
     }
     throw err;
   }
 };
 
-export const getSingleTagService = async (
-  userId: string,
-  tagId: string
-) => {
-  const tag = await Tag.findOne({ _id: tagId, userId }).lean();
+export const getSingleTagService = async (userId: string, tagId: string) => {
+  const tag = await prisma.tag.findFirst({
+    where: { id: tagId, userId },
+  });
   if (!tag) {
     throw new ApiError(404, "Tag not found");
   }
-  return tag;
+  return { ...tag, _id: tag.id };
 };
 
 export const getTagsService = async (userId: string) => {
@@ -39,7 +44,7 @@ export const getTagsService = async (userId: string) => {
   let cached = null;
   try {
     cached = await redis.get(cacheKey);
-  } catch (err) {
+  } catch {
     logger.warn({
       message: "Redis GET failed",
       key: cacheKey,
@@ -48,14 +53,15 @@ export const getTagsService = async (userId: string) => {
   if (cached) {
     return JSON.parse(cached);
   }
-  const tags = await Tag.find({ userId }).lean();
+  const tags = await prisma.tag.findMany({ where: { userId } });
+  const mapped = tags.map((t) => ({ ...t, _id: t.id }));
   try {
-    await redis.set(cacheKey, JSON.stringify(tags), "EX", 300);
-  } catch (err) {
+    await redis.set(cacheKey, JSON.stringify(mapped), "EX", 300);
+  } catch {
     logger.warn({
       message: "Redis SET failed",
       key: cacheKey,
     });
   }
-  return tags;
+  return mapped;
 };

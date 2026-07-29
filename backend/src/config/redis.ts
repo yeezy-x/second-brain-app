@@ -1,10 +1,10 @@
 import Redis from "ioredis";
 import { logger } from "../core/logger";
+import { env } from "./env";
 
-export const redis = new Redis({
-  host: process.env.REDIS_HOST || "127.0.0.1",
-  port: Number(process.env.REDIS_PORT) || 6379,
+export const redis = new Redis(env.REDIS_URL,{
   maxRetriesPerRequest: null,
+  tls:{},
   retryStrategy: (times) => {
     if(times>20) return null;
     return Math.min(times * 50, 2000);

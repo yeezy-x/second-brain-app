@@ -1,23 +1,28 @@
-import { Content } from "../modules/content/content.model";
+import { prisma } from "../config/db";
 import { logger } from "../core/logger";
 import { extractMetadata } from "../utils/metadata";
 
 export const processMetadata = async (contentId: string, url: string) => {
   try {
-    await Content.findByIdAndUpdate(contentId, {
-      metadataStatus: "pending",
+    await prisma.content.update({
+      where: { id: contentId },
+      data: { metadataStatus: "pending" },
     });
     const metadata = await extractMetadata(url);
-    const isFallback=metadata.title===url;
-    await Content.findByIdAndUpdate(contentId, {
-      metadata,
-      metadataStatus: isFallback ? "fallback" : "done",
+    const isFallback = metadata.title === url;
+    await prisma.content.update({
+      where: { id: contentId },
+      data: {
+        metadata,
+        metadataStatus: isFallback ? "fallback" : "done",
+      },
     });
     logger.info({ contentId, metadata }, "Metadata processed");
   } catch (err) {
     logger.error({ err, contentId }, "Metadata processing failed");
-    await Content.findByIdAndUpdate(contentId, {
-      metadataStatus: "failed",
+    await prisma.content.update({
+      where: { id: contentId },
+      data: { metadataStatus: "failed" },
     });
     throw err;
   }

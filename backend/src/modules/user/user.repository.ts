@@ -1,13 +1,20 @@
-import {User} from './user.model';
+import { prisma } from "../../config/db";
 
 export const findUserByEmail = (email: string) => {
-  return User.findOne({ email });
+  return prisma.user.findUnique({ where: { email } });
 };
 
 export const createUser = (data: { email: string; password: string }) => {
-  return User.create(data);
+  return prisma.user.create({ data });
 };
 
 export const findUserById = (id: string) => {
-  return User.findById(id);
+  return prisma.user.findUnique({ where: { id } });
+};
+
+export const updateUserRefreshToken = (id: string, refreshToken: string | null) => {
+  return prisma.user.update({
+    where: { id },
+    data: { refreshToken },
+  });
 };
