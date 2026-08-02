@@ -21,4 +21,10 @@ export const queryKeys = {
     mine: () => ["share", "mine"] as const,
     public: (shareId: string) => ["share", "public", shareId] as const,
   },
+  admin: {
+    all: ["admin"] as const,
+    users: () => ["admin", "users"] as const,
+    userContent: (userId: string) =>
+      ["admin", "users", userId, "content"] as const,
+  },
 } as const;

@@ -12,14 +12,12 @@ import {
   type SignupFormValues,
 } from "@/features/auth/schemas/auth-schemas";
 import { useSignup } from "@/features/auth/hooks/useSignup";
-import { useLogin } from "@/features/auth/hooks/useLogin";
 import { getErrorMessage } from "@/lib/error";
 import { AuthLayout } from "@/features/auth/pages/LoginPage";
 
 export default function SignupPage() {
   const navigate = useNavigate();
   const signup = useSignup();
-  const login = useLogin();
 
   const {
     register,
@@ -33,17 +31,15 @@ export default function SignupPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      // The backend signup endpoint does NOT return tokens — we must log in after.
       await signup.mutateAsync({ email: values.email, password: values.password });
-      await login.mutateAsync({ email: values.email, password: values.password });
       toast.success("Account created");
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       toast.error(getErrorMessage(err));
     }
   });
 
-  const busy = isSubmitting || signup.isPending || login.isPending;
+  const busy = isSubmitting || signup.isPending;
 
   return (
     <AuthLayout

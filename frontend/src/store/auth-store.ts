@@ -1,64 +1,41 @@
 import { create } from "zustand";
-import { tokenStorage } from "@/lib/token-storage";
+import type { AuthUser } from "@/features/auth/types";
 
 export type AuthSnapshot = {
-  accessToken: string | null;
-  refreshToken: string | null;
-  email: string | null;
+  user: AuthUser | null;
   isAuthenticated: boolean;
   hasHydrated: boolean;
 };
 
 type AuthState = AuthSnapshot & {
-  setTokens: (input: {
-    accessToken: string;
-    refreshToken: string;
-    email?: string;
-  }) => void;
+  setUser: (user: AuthUser) => void;
   clearAuth: () => void;
-  initializeAuth: () => void;
+  setHydrated: (hydrated: boolean) => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
-  accessToken: null,
-  refreshToken: null,
-  email: null,
+  user: null,
   isAuthenticated: false,
   hasHydrated: false,
 
-  setTokens: ({ accessToken, refreshToken, email }) => {
-    tokenStorage.set({ accessToken, refreshToken, email });
+  setUser: (user) => {
     set({
-      accessToken,
-      refreshToken,
-      email: email ?? tokenStorage.getEmail() ?? null,
+      user,
       isAuthenticated: true,
       hasHydrated: true,
     });
   },
 
   clearAuth: () => {
-    tokenStorage.clear();
     set({
-      accessToken: null,
-      refreshToken: null,
-      email: null,
+      user: null,
       isAuthenticated: false,
       hasHydrated: true,
     });
   },
 
-  initializeAuth: () => {
-    const accessToken = tokenStorage.getAccessToken();
-    const refreshToken = tokenStorage.getRefreshToken();
-    const email = tokenStorage.getEmail();
-    set({
-      accessToken,
-      refreshToken,
-      email,
-      isAuthenticated: Boolean(accessToken && refreshToken),
-      hasHydrated: true,
-    });
+  setHydrated: (hydrated) => {
+    set({ hasHydrated: hydrated });
   },
 }));
 
@@ -66,9 +43,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 export function getAuthSnapshot(): AuthSnapshot {
   const s = useAuthStore.getState();
   return {
-    accessToken: s.accessToken,
-    refreshToken: s.refreshToken,
-    email: s.email,
+    user: s.user,
     isAuthenticated: s.isAuthenticated,
     hasHydrated: s.hasHydrated,
   };

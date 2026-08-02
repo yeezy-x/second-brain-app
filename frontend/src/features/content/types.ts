@@ -1,14 +1,14 @@
 /**
- * Content feature types — exact mirror of backend.
- *
- * Source of truth:
- *   - src/modules/content/content.validation.ts
- *   - src/modules/content/content.controller.ts (GET returns { items, nextCursor })
- *   - src/modules/content/content.service.ts (selects _id title type url tags createdAt)
+ * Content feature types — mirror of backend Prisma-mapped DTOs.
  */
 export type ContentType = "tweet" | "video" | "document" | "link";
 
 export const CONTENT_TYPES: ContentType[] = ["tweet", "video", "document", "link"];
+
+export type ContentTag = {
+  id: string;
+  name: string;
+};
 
 export type CreateContentRequest = {
   type: ContentType;
@@ -18,13 +18,14 @@ export type CreateContentRequest = {
   tags?: string[];
 };
 
-/** A row as returned by GET /content. `tags` are Mongo ObjectId strings. */
+/** A row as returned by GET /content. Tags are { id, name } objects. */
 export type ContentItem = {
+  id: string;
   _id: string;
   type: ContentType;
   title?: string;
   url?: string;
-  tags: string[];
+  tags: ContentTag[];
   createdAt: string;
 };
 

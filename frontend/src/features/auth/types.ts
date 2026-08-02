@@ -1,10 +1,15 @@
 /**
- * Auth feature types — exact mirror of backend DTOs.
- *
- * Source of truth:
- *   - src/modules/auth/auth.schema.ts
- *   - src/modules/auth/auth.service.ts
+ * Auth user returned by signup / login / refresh /me.
+ * Tokens live in HTTP-only cookies — never stored in JS.
  */
+export type Role = "USER" | "ADMIN";
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  role: Role;
+};
+
 export type SignupRequest = {
   email: string;
   password: string;
@@ -12,19 +17,5 @@ export type SignupRequest = {
 
 export type LoginRequest = SignupRequest;
 
-export type AuthTokens = {
-  accessToken: string;
-  refreshToken: string;
-};
-
-export type RefreshTokenRequest = {
-  refreshToken: string;
-};
-
-/** Signup returns the user object (NOT tokens). The user must then log in. */
-export type SignupResponse = {
-  _id: string;
-  email: string;
-  createdAt: string;
-  updatedAt: string;
-};
+/** Signup now creates a session (cookies) and returns the safe user DTO. */
+export type SignupResponse = AuthUser;

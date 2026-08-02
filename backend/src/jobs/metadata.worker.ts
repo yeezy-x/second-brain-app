@@ -5,8 +5,9 @@ import { logger } from "../core/logger";
 import { METADATA_QUEUE } from "./queue";
 import { env } from "../config/env";
 import { connectDB } from "../config/db";
+import { getRedisOptions } from "../config/redisOptions";
 
-const connection = new Redis(env.REDIS_URL!);
+const connection = new Redis(env.REDIS_URL, getRedisOptions());
 
 const startWorker = async () => {
   try {

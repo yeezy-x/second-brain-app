@@ -5,47 +5,80 @@ import {
   loginService,
   refreshTokenService,
   logoutService,
+  meService,
+  resolveLogoutUserId,
 } from "./auth.service";
-import { signupSchema, loginSchema, refreshTokenSchema } from "./auth.schema";
+import { signupSchema, loginSchema } from "./auth.schema";
 import { ApiResponse } from "../../utils/ApiResponse";
 import { ApiError } from "../../utils/ApiError";
 import { validate } from "../../utils/validate";
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  clearAuthCookies,
+  setAuthCookies,
+} from "../../utils/cookies";
 
-function requireUser(req:Request):string{
-  if(!req.user?.id){
-    throw new ApiError(401,"Unauthorized");
+function requireUser(req: Request): string {
+  if (!req.user?.id) {
+    throw new ApiError(401, "Unauthorized");
   }
   return req.user.id;
 }
 
 export const signup = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = validate(signupSchema, req.body);
-  const user = await signUpService(email, password);
-  res
-    .status(201)
-    .json(new ApiResponse(user, "User created"));
+  const { user, accessToken, refreshToken } = await signUpService(
+    email,
+    password
+  );
+  setAuthCookies(res, { accessToken, refreshToken });
+  res.status(201).json(new ApiResponse(user, "User created"));
 });
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = validate(loginSchema, req.body);
-  const tokens = await loginService(email, password);
-  res
-    .status(200)
-    .json(new ApiResponse(tokens, "Login successful"));
+  const { user, accessToken, refreshToken } = await loginService(
+    email,
+    password
+  );
+  setAuthCookies(res, { accessToken, refreshToken });
+  res.status(200).json(new ApiResponse(user, "Login successful"));
 });
 
 export const refreshToken = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken } = validate(refreshTokenSchema, req.body);
-  const token = await refreshTokenService(refreshToken);
-  res
-    .status(200)
-    .json(new ApiResponse(token, "Token refreshed"));
+  const token =
+    (req.cookies?.[REFRESH_COOKIE] as string | undefined) ||
+    (req.body?.refreshToken as string | undefined) ||
+    "";
+  const result = await refreshTokenService(token);
+  setAuthCookies(res, {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+  });
+  res.status(200).json(new ApiResponse(result.user, "Token refreshed"));
 });
 
 export const logout = asyncHandler(async (req: Request, res: Response) => {
+  const accessToken =
+    (req.cookies?.[ACCESS_COOKIE] as string | undefined) ||
+    (req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.slice(7)
+      : undefined);
+  const refreshToken =
+    (req.cookies?.[REFRESH_COOKIE] as string | undefined) ||
+    (req.body?.refreshToken as string | undefined);
+
+  const userId = await resolveLogoutUserId(accessToken, refreshToken);
+  if (userId) {
+    await logoutService(userId);
+  }
+  clearAuthCookies(res);
+  res.status(200).json(new ApiResponse(null, "Logged out"));
+});
+
+export const me = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUser(req);
-  await logoutService(userId);
-  res
-    .status(200)
-    .json(new ApiResponse(null, "Logged out"));
+  const user = await meService(userId);
+  res.status(200).json(new ApiResponse(user, "OK"));
 });

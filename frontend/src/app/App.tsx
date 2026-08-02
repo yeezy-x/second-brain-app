@@ -1,16 +1,11 @@
-import * as React from "react";
 import { Toaster } from "sonner";
 import { AppRouter } from "@/routes";
 import { QueryProvider } from "@/app/QueryProvider";
 import { ErrorBoundary } from "@/app/ErrorBoundary";
-import { useAuthStore } from "@/store/auth-store";
+import { useInitializeAuth } from "@/features/auth/hooks/useInitializeAuth";
 
 export function App() {
-  const initializeAuth = useAuthStore((s) => s.initializeAuth);
-
-  React.useEffect(() => {
-    initializeAuth();
-  }, [initializeAuth]);
+  useInitializeAuth();
 
   return (
     <ErrorBoundary>

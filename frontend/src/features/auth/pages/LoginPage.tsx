@@ -36,7 +36,7 @@ export default function LoginPage() {
     try {
       await login.mutateAsync(values);
       const state = location.state as LocationState;
-      const dest = state?.from?.pathname || "/";
+      const dest = state?.from?.pathname || "/dashboard";
       toast.success("Welcome back");
       navigate(dest, { replace: true });
     } catch (err) {

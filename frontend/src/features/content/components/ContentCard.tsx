@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useDeleteContent } from "@/features/content/hooks/useDeleteContent";
-import { useTagNameMap } from "@/features/tags/hooks/useTags";
 import type { ContentItem, ContentType } from "@/features/content/types";
 import { formatRelativeDate, safeUrlHostname } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/error";
@@ -12,7 +11,11 @@ import { toast } from "sonner";
 
 const TYPE_META: Record<
   ContentType,
-  { label: string; icon: React.ComponentType<{ className?: string }>; tone: "accent" | "muted" | "neutral" | "success" }
+  {
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    tone: "accent" | "muted" | "neutral" | "success";
+  }
 > = {
   tweet: { label: "Tweet", icon: X, tone: "accent" },
   video: { label: "Video", icon: Video, tone: "accent" },
@@ -24,17 +27,13 @@ export function ContentCard({ item }: { item: ContentItem }) {
   const meta = TYPE_META[item.type];
   const TypeIcon = meta.icon;
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const tagMap = useTagNameMap();
   const del = useDeleteContent();
-
-  const tagNames = React.useMemo(
-    () => item.tags.map((id) => tagMap[id]).filter((n): n is string => Boolean(n)),
-    [item.tags, tagMap]
-  );
+  const contentId = item._id || item.id;
+  const tagNames = (item.tags ?? []).map((t) => t.name).filter(Boolean);
 
   const handleDelete = async () => {
     try {
-      await del.mutateAsync(item._id);
+      await del.mutateAsync(contentId);
       toast.success("Content deleted");
       setConfirmOpen(false);
     } catch (err) {
@@ -44,7 +43,7 @@ export function ContentCard({ item }: { item: ContentItem }) {
 
   return (
     <li
-      data-testid={`content-card-${item._id}`}
+      data-testid={`content-card-${contentId}`}
       className="group relative animate-fade-in rounded-lg border border-border bg-bg-elev/70 p-4 transition-colors hover:border-muted-fg/30 hover:bg-bg-elev"
     >
       <div className="flex items-start gap-3">
@@ -93,7 +92,7 @@ export function ContentCard({ item }: { item: ContentItem }) {
               variant="ghost"
               size="icon"
               aria-label="Open link"
-              data-testid={`open-content-${item._id}`}
+              data-testid={`open-content-${contentId}`}
             >
               <a href={item.url} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4" />
@@ -105,7 +104,7 @@ export function ContentCard({ item }: { item: ContentItem }) {
             size="icon"
             aria-label="Delete content"
             onClick={() => setConfirmOpen(true)}
-            data-testid={`delete-content-btn-${item._id}`}
+            data-testid={`delete-content-btn-${contentId}`}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -121,7 +120,7 @@ export function ContentCard({ item }: { item: ContentItem }) {
         destructive
         loading={del.isPending}
         onConfirm={handleDelete}
-        testIdPrefix={`delete-${item._id}`}
+        testIdPrefix={`delete-${contentId}`}
       />
     </li>
   );

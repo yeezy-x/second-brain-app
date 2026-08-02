@@ -1,15 +1,16 @@
 // React import not required (jsx: react-jsx)
 import { NavLink, useLocation } from "react-router-dom";
-import { Inbox, FileText, Link2, Tag as TagIcon, X , Video } from "lucide-react";
+import { Inbox, FileText, Link2, Tag as TagIcon, X, Video, Shield } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { cn } from "@/lib/utils";
 import { useTags } from "@/features/tags/hooks/useTags";
+import { useAuthStore } from "@/store/auth-store";
 
 const TYPE_LINKS = [
-  { to: "/?type=tweet", label: "Tweets", icon: X, type: "tweet" },
-  { to: "/?type=video", label: "Videos", icon: Video, type: "video" },
-  { to: "/?type=document", label: "Documents", icon: FileText, type: "document" },
-  { to: "/?type=link", label: "Links", icon: Link2, type: "link" },
+  { to: "/dashboard?type=tweet", label: "Tweets", icon: X, type: "tweet" },
+  { to: "/dashboard?type=video", label: "Videos", icon: Video, type: "video" },
+  { to: "/dashboard?type=document", label: "Documents", icon: FileText, type: "document" },
+  { to: "/dashboard?type=link", label: "Links", icon: Link2, type: "link" },
 ] as const;
 
 export function Sidebar({
@@ -24,6 +25,7 @@ export function Sidebar({
   const activeType = params.get("type");
   const activeTag = params.get("tag");
   const { data: tags } = useTags();
+  const role = useAuthStore((s) => s.user?.role);
 
   return (
     <aside className="flex h-full w-full flex-col gap-6 border-r border-border bg-bg-elev/60 p-4 lg:w-64">
@@ -33,7 +35,7 @@ export function Sidebar({
 
       <nav className="flex flex-col gap-1" data-testid={`sidebar-nav-${testIdSuffix}`}>
         <NavLink
-          to="/"
+          to="/dashboard"
           end
           onClick={onNavigate}
           className={({ isActive }) =>
@@ -71,6 +73,27 @@ export function Sidebar({
         ))}
       </nav>
 
+      {role === "ADMIN" ? (
+        <nav className="flex flex-col gap-1">
+          <NavLink
+            to="/admin"
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              cn(
+                "group flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+                isActive
+                  ? "bg-bg-elev-2 text-fg"
+                  : "text-muted-fg hover:bg-bg-elev-2/70 hover:text-fg"
+              )
+            }
+            data-testid="nav-admin"
+          >
+            <Shield className="h-4 w-4" />
+            Admin
+          </NavLink>
+        </nav>
+      ) : null}
+
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between px-3 text-[11px] uppercase tracking-[0.14em] text-muted-fg">
           <span>Tags</span>
@@ -91,9 +114,9 @@ export function Sidebar({
           ) : (
             tags.map((t) => (
               <NavLink
-                key={t._id}
+                key={t.id || t._id}
                 onClick={onNavigate}
-                to={`/?tag=${encodeURIComponent(t.name)}`}
+                to={`/dashboard?tag=${encodeURIComponent(t.name)}`}
                 className={cn(
                   "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors",
                   activeTag === t.name

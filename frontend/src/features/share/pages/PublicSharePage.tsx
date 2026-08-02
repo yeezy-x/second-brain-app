@@ -117,12 +117,14 @@ export default function PublicSharePage() {
 function PublicShareCard({ item }: { item: PublicSharedItem }) {
   const meta = TYPE_META[item.type];
   const Icon = meta.icon;
+  const contentId = item._id || item.id;
   const fallbackTitle = item.title || item.metadata?.title || "Untitled";
   const description = item.description || item.metadata?.description;
+  const tagNames = (item.tags ?? []).map((t) => t.name).filter(Boolean);
 
   return (
     <li
-      data-testid={`public-share-card-${item._id}`}
+      data-testid={`public-share-card-${contentId}`}
       className="group animate-fade-in rounded-lg border border-border bg-bg-elev/70 p-4 transition-colors hover:border-muted-fg/30 hover:bg-bg-elev"
     >
       <div className="flex items-start gap-3">
@@ -146,6 +148,18 @@ function PublicShareCard({ item }: { item: PublicSharedItem }) {
           </h3>
           {description ? (
             <p className="mt-1 line-clamp-3 text-sm text-muted-fg">{description}</p>
+          ) : null}
+          {tagNames.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {tagNames.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center rounded-full border border-border bg-bg-elev-2 px-2 py-0.5 text-[11px] text-muted-fg"
+                >
+                  #{t}
+                </span>
+              ))}
+            </div>
           ) : null}
         </div>
         {item.url ? (

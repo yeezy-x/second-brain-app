@@ -1,15 +1,9 @@
 import Redis from "ioredis";
 import { logger } from "../core/logger";
 import { env } from "./env";
+import { getRedisOptions } from "./redisOptions";
 
-export const redis = new Redis(env.REDIS_URL,{
-  maxRetriesPerRequest: null,
-  tls:{},
-  retryStrategy: (times) => {
-    if(times>20) return null;
-    return Math.min(times * 50, 2000);
-  }
-});
+export const redis = new Redis(env.REDIS_URL, getRedisOptions());
 
 redis.on("connect", () => {
   logger.info("✅ Redis connected");

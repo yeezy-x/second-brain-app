@@ -5,13 +5,31 @@ import { nanoid } from "nanoid";
 import { redis } from "../../config/redis";
 import { logger } from "../../core/logger";
 
+const mapShare = <T extends { id: string }>(share: T) => ({
+  ...share,
+  _id: share.id,
+});
+
 export const createShareService = async (userId: string) => {
-  const existing = await prisma.share.findFirst({
-    where: { userId, isActive: true },
+  const existing = await prisma.share.findUnique({
+    where: { userId },
   });
-  if (existing) {
-    return { ...existing, _id: existing.id };
+
+  if (existing?.isActive) {
+    return mapShare(existing);
   }
+
+  if (existing && !existing.isActive) {
+    const reactivated = await prisma.share.update({
+      where: { id: existing.id },
+      data: {
+        isActive: true,
+        shareId: nanoid(10),
+      },
+    });
+    return mapShare(reactivated);
+  }
+
   try {
     const share = await prisma.share.create({
       data: {
@@ -19,12 +37,12 @@ export const createShareService = async (userId: string) => {
         shareId: nanoid(10),
       },
     });
-    return { ...share, _id: share.id };
+    return mapShare(share);
   } catch {
     const fallback = await prisma.share.findFirst({
       where: { userId, isActive: true },
     });
-    if (fallback) return { ...fallback, _id: fallback.id };
+    if (fallback) return mapShare(fallback);
     throw new ApiError(500, "Failed to create share link");
   }
 };
@@ -72,7 +90,7 @@ export const disableShareService = async (shareId: string, userId: string) => {
     throw new ApiError(404, "Share not found or access denied");
   }
   if (!share.isActive) {
-    return { ...share, _id: share.id };
+    return mapShare(share);
   }
   const updated = await prisma.share.update({
     where: { id: share.id },
@@ -86,5 +104,5 @@ export const disableShareService = async (shareId: string, userId: string) => {
       key: `share:${shareId}`,
     });
   }
-  return { ...updated, _id: updated.id };
+  return mapShare(updated);
 };

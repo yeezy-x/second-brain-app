@@ -29,7 +29,8 @@ export function useCreateContent() {
         if (params && params.cursor) continue;
 
         const optimistic: ContentItem = {
-          _id: created._id,
+          id: created.id || created._id,
+          _id: created._id || created.id,
           type: created.type,
           title: created.title,
           url: created.url,

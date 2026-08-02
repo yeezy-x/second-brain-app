@@ -15,12 +15,16 @@ export function useTags() {
   });
 }
 
-/** Map of tag _id -> name. Useful for resolving the ObjectId refs returned by /content. */
+/** Map of tag id -> name. */
 export function useTagNameMap(): Record<string, string> {
   const { data } = useTags();
   return useMemo(() => {
     const map: Record<string, string> = {};
-    if (data) for (const t of data as Tag[]) map[t._id] = t.name;
+    if (data) {
+      for (const t of data as Tag[]) {
+        map[t.id || t._id] = t.name;
+      }
+    }
     return map;
   }, [data]);
 }

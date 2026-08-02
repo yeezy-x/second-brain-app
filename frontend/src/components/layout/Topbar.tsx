@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Menu, LogOut, Plus, Search, Share2, X } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Menu, LogOut, Plus, Search, Share2, X, Shield } from "lucide-react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLogout } from "@/features/auth/hooks/useLogout";
@@ -19,7 +19,8 @@ export function Topbar({ onOpenSidebar, onCreate, onShare }: TopbarProps) {
   const [value, setValue] = React.useState<string>(initial);
   const navigate = useNavigate();
   const logout = useLogout();
-  const email = useAuthStore((s) => s.email);
+  const email = useAuthStore((s) => s.user?.email);
+  const role = useAuthStore((s) => s.user?.role);
 
   // Keep input in sync if the URL changes externally (sidebar nav, back button).
   React.useEffect(() => {
@@ -122,6 +123,20 @@ export function Topbar({ onOpenSidebar, onCreate, onShare }: TopbarProps) {
       >
         <Share2 className="h-4 w-4" />
       </Button>
+
+      {role === "ADMIN" ? (
+        <Button
+          asChild
+          variant="ghost"
+          className="hidden sm:inline-flex"
+          data-testid="topbar-admin-btn"
+        >
+          <Link to="/admin">
+            <Shield className="h-4 w-4" />
+            Admin
+          </Link>
+        </Button>
+      ) : null}
 
       <div className="hidden md:flex items-center gap-2 pl-2 border-l border-border">
         <div className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-accent/30 to-indigo-500/30 text-[11px] font-semibold uppercase text-fg">

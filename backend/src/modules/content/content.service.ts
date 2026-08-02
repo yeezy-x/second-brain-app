@@ -12,6 +12,23 @@ import { logger } from "../../core/logger";
 const hash = (obj: unknown) =>
   crypto.createHash("md5").update(JSON.stringify(obj)).digest("hex");
 
+const getContentVersion = async (userId: string): Promise<string> => {
+  try {
+    return (await redis.get(`version:${userId}`)) ?? "0";
+  } catch {
+    return "0";
+  }
+};
+
+const bumpContentVersion = async (userId: string): Promise<void> => {
+  try {
+    await redis.incr(`version:${userId}`);
+    await redis.expire(`version:${userId}`, 3600);
+  } catch {
+    logger.warn("Redis version bump failed");
+  }
+};
+
 const mapContent = <T extends { id: string; tags?: { tag: { id: string; name: string } }[] }>(
   content: T
 ) => {
@@ -19,7 +36,7 @@ const mapContent = <T extends { id: string; tags?: { tag: { id: string; name: st
   return {
     ...rest,
     _id: content.id,
-    tags: tags?.map((t) => t.tag) ?? undefined,
+    tags: tags?.map((t) => t.tag) ?? [],
   };
 };
 
@@ -64,12 +81,7 @@ export const createContentService = async (
       });
     });
 
-    try {
-      await redis.incr(`version:${userId}`);
-      await redis.expire(`version:${userId}`, 3600);
-    } catch {
-      logger.warn("Redis version bump failed");
-    }
+    await bumpContentVersion(userId);
 
     if (url) {
       const jobId = crypto
@@ -114,9 +126,10 @@ export const getContentService = async (
 
   const parsedLimit = limit;
   const useCache = !search;
+  const version = useCache ? await getContentVersion(userId) : "0";
 
   if (useCache) {
-    const cacheKey = `content:${userId}:${hash({
+    const cacheKey = `content:${userId}:v${version}:${hash({
       cursor,
       type,
       tag,
@@ -247,7 +260,7 @@ export const getContentService = async (
   };
 
   if (useCache) {
-    const cacheKey = `content:${userId}:${hash({
+    const cacheKey = `content:${userId}:v${version}:${hash({
       cursor,
       type,
       tag,
@@ -272,12 +285,7 @@ export const deleteContentService = async (id: string, userId: string) => {
     throw new ApiError(404, "Content not found");
   }
 
-  try {
-    await redis.incr(`version:${userId}`);
-    await redis.expire(`version:${userId}`, 3600);
-  } catch {
-    logger.warn("Redis version bump failed");
-  }
+  await bumpContentVersion(userId);
 
   return { success: true };
 };

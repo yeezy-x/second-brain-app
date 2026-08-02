@@ -6,8 +6,8 @@ import axios, {
 } from "axios";
 
 import type { ApiSuccess } from "@/types/api";
-import { getAuthSnapshot, useAuthStore } from "@/store/auth-store";
-import { tokenStorage } from "@/lib/token-storage";
+import { useAuthStore } from "@/store/auth-store";
+import type { AuthUser } from "@/features/auth/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
@@ -17,84 +17,57 @@ if (!import.meta.env.VITE_API_BASE_URL && import.meta.env.PROD) {
 
 type RetriableConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
-  _skipAuthRefresh?: boolean
+  _skipAuthRefresh?: boolean;
 };
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Concurrent-safe refresh queue
  * ──────────────────────────────────────────────────────────────────────── */
-type Resolver = (token: string) => void;
+type Resolver = () => void;
 type Rejector = (err: unknown) => void;
 
 let isRefreshing = false;
 let pendingQueue: { resolve: Resolver; reject: Rejector }[] = [];
 
-function flushQueue(error: unknown, token: string | null): void {
+function flushQueue(error: unknown): void {
   pendingQueue.forEach(({ resolve, reject }) => {
-    if (error || !token) reject(error);
-    else resolve(token);
+    if (error) reject(error);
+    else resolve();
   });
   pendingQueue = [];
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Axios instance
+ * Axios instance — cookies carry JWTs (withCredentials)
  * ──────────────────────────────────────────────────────────────────────── */
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 20_000,
+  withCredentials: true,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
-});
-
-// Bearer attachment
-apiClient.interceptors.request.use((config) => {
-  const access = tokenStorage.getAccessToken();
-  if (access && config.headers) {
-    config.headers.Authorization = `Bearer ${access}`;
-  }
-  return config;
 });
 
 /**
  * Refresh handler.
- *
- * Backend quirk: `/auth/refresh-token` is mounted behind `authMiddleware`,
- * so it requires BOTH the (still-valid or just-expired) access token in the
- * Authorization header AND `{ refreshToken }` in the body. We honour that
- * exactly.
+ * Access + refresh JWTs live in HTTP-only cookies; the browser sends them
+ * automatically. Refresh only needs credentials — no body token.
  */
-async function performRefresh(): Promise<string> {
-  const refreshToken = tokenStorage.getRefreshToken();
-  const accessToken = tokenStorage.getAccessToken();
-  if (!refreshToken || !accessToken) {
-    throw new Error("Missing tokens");
-  }
-
-  // Use a bare axios call to avoid recursing through interceptors.
-  const res = await axios.post<
-    ApiSuccess<{ accessToken: string; refreshToken: string }>
-  >(
+async function performRefresh(): Promise<void> {
+  const res = await axios.post<ApiSuccess<AuthUser>>(
     `${API_BASE_URL}/auth/refresh-token`,
-    { refreshToken },
+    {},
     {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
+      withCredentials: true,
+      headers: { "Content-Type": "application/json" },
       timeout: 15_000,
     }
   );
 
-  const data = res.data?.data;
-  if (!data?.accessToken || !data?.refreshToken) {
+  const user = res.data?.data;
+  if (!user?.id) {
     throw new Error("Invalid refresh response");
   }
-  useAuthStore.getState().setTokens({
-    accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
-    email: getAuthSnapshot().email ?? undefined,
-  });
-  return data.accessToken;
+  useAuthStore.getState().setUser(user);
 }
 
 apiClient.interceptors.response.use(
@@ -103,8 +76,6 @@ apiClient.interceptors.response.use(
     const original = error.config as RetriableConfig | undefined;
     const status = error.response?.status;
 
-    // Pass through anything that isn't a 401, isn't retriable, or is the
-    // refresh endpoint itself (skip flag).
     if (
       !original ||
       status !== 401 ||
@@ -112,26 +83,17 @@ apiClient.interceptors.response.use(
       original._skipAuthRefresh ||
       original.url?.includes("/auth/refresh-token") ||
       original.url?.includes("/auth/login") ||
-      original.url?.includes("/auth/signup")
+      original.url?.includes("/auth/signup") ||
+      original.url?.includes("/auth/logout")
     ) {
       return Promise.reject(error);
     }
 
-    const refreshToken = tokenStorage.getRefreshToken();
-    if (!refreshToken) {
-      useAuthStore.getState().clearAuth();
-      return Promise.reject(error);
-    }
-
     if (isRefreshing) {
-      // Another request is refreshing — queue this one until it's done.
       return new Promise((resolve, reject) => {
         pendingQueue.push({
-          resolve: (newToken) => {
+          resolve: () => {
             original._retry = true;
-            if (original.headers) {
-              original.headers.Authorization = `Bearer ${newToken}`;
-            }
             resolve(apiClient(original));
           },
           reject,
@@ -143,14 +105,11 @@ apiClient.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const newAccess = await performRefresh();
-      flushQueue(null, newAccess);
-      if (original.headers) {
-        original.headers.Authorization = `Bearer ${newAccess}`;
-      }
+      await performRefresh();
+      flushQueue(null);
       return apiClient(original);
     } catch (refreshError) {
-      flushQueue(refreshError, null);
+      flushQueue(refreshError);
       useAuthStore.getState().clearAuth();
       return Promise.reject(refreshError);
     } finally {
