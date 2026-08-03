@@ -32,6 +32,12 @@ enum Role {
   ADMIN
 }
 
+enum AiStatus {
+  pending
+  done
+  failed
+}
+
 model User {
   id           String    @id @default(uuid()) @db.Uuid
   email        String    @unique
@@ -58,11 +64,14 @@ model Content {
   updatedAt      DateTime       @updatedAt
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   tags           ContentTag[]
+  embedding      Unsupported("vector(768)")?
+  aiStatus       AiStatus       @default(pending)
 
   @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([userId, type, createdAt(sort: Desc), id(sort: Desc)])
   @@index([metadataStatus])
   @@index([userId, url])
+  @@index([userId, aiStatus])
 }
 
 model Tag {

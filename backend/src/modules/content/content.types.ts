@@ -21,3 +21,16 @@ export interface ContentResponseDTO {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type ContentMetadataDTO = {
+  title?: string;
+  description?: string;
+  image?: string;
+  ai?: {
+    summary: string;
+    suggestedTags: string[];
+    keyPoints: string[];
+    enrichedAt: string;
+    status?: "pending" | "done" | "failed";
+  };
+};

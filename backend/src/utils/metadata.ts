@@ -54,6 +54,7 @@ export const extractMetadata = async (url: string) => {
     return fallback(url);
   }
 };
+
 const fallback = (url: string) => ({
   title: url,
   description: "",

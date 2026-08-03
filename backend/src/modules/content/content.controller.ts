@@ -4,6 +4,7 @@ import {
   createContentService,
   getContentService,
   deleteContentService,
+  addContentTagService,
 } from "./content.service";
 import { ApiResponse } from "../../utils/ApiResponse";
 import { CreateContentDTO, GetContentQuery } from "./content.types";
@@ -44,6 +45,18 @@ export const deleteContent = asyncHandler(
     await deleteContentService(id, userId);
     return res.status(200).json(
       new ApiResponse(null, "Content deleted", req.id)
+    );
+  }
+);
+
+export const addContentTag = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { id } = req.validatedParams as { id: string };
+    const { tag } = req.validatedBody as { tag: string };
+    const content = await addContentTagService(id, userId, tag);
+    return res.status(200).json(
+      new ApiResponse(content, "Tag added", req.id)
     );
   }
 );

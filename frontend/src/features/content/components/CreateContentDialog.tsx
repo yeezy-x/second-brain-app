@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useForm, useWatch, Controller, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, X } from "lucide-react";
+import { Loader2, Plus, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ import {
   createContentFormSchema,
   type CreateContentFormValues,
 } from "@/features/content/schemas/content-schema";
+import { useAiPrefill } from "@/features/ai/hooks/useAiPrefill";
 import { useCreateContent } from "@/features/content/hooks/useCreateContent";
 import {
   CONTENT_TYPES,
@@ -50,9 +51,20 @@ type Props = {
 
 export function CreateContentDialog({ open, onOpenChange }: Props) {
   const create = useCreateContent();
+  const prefill = useAiPrefill();
+  const lastPrefilledUrl = React.useRef<string | null>(null);
+  const abortRef = React.useRef<AbortController | null>(null);
 
   const {
-    control,register,handleSubmit,reset,setError,setValue,formState: { errors, isSubmitting }} = useForm<CreateContentFormValues>({
+    control,
+    register,
+    handleSubmit,
+    reset,
+    setError,
+    setValue,
+    getValues,
+    formState: { errors, isSubmitting },
+  } = useForm<CreateContentFormValues>({
     resolver: zodResolver(createContentFormSchema),
     defaultValues: {
       type: "link",
@@ -80,11 +92,58 @@ export function CreateContentDialog({ open, onOpenChange }: Props) {
   React.useEffect(() => {
     if (!open) {
       reset({ type: "link", title: "", description: "", url: "", tags: [] });
-      /* setTagDraft("");*/
+      setTagDraft("");
+      lastPrefilledUrl.current = null;
+      abortRef.current?.abort();
+      prefill.reset();
       create.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const runPrefill = async (rawUrl: string, force = false) => {
+    const url = rawUrl.trim();
+    if (!url) return;
+
+    try {
+      new URL(url);
+    } catch {
+      return;
+    }
+
+    if (!force && lastPrefilledUrl.current === url) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const result = await prefill.mutateAsync({ url, signal: controller.signal });
+      const current = getValues();
+
+      if (!current.title?.trim() && result.title) {
+        setValue("title", result.title, { shouldDirty: true, shouldValidate: true });
+      }
+      if (!current.description?.trim() && result.description) {
+        setValue("description", result.description, { shouldDirty: true });
+      }
+      if ((current.tags ?? []).length === 0 && result.suggestedTags.length > 0) {
+        setValue("tags", result.suggestedTags.slice(0, 10), { shouldDirty: true });
+      }
+
+      lastPrefilledUrl.current = url;
+    } catch (err) {
+      if (controller.signal.aborted) return;
+
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 503) return;
+      if (status === 429) {
+        toast.error("Too many AI requests. Try again in a moment.");
+        return;
+      }
+      toast.error("Couldn't auto-fill from URL");
+    }
+  };
 
   const addTag = (raw: string) => {
     const next = raw.trim().toLowerCase();
@@ -210,17 +269,44 @@ export function CreateContentDialog({ open, onOpenChange }: Props) {
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="content-url">
-              URL{urlRequired ? " (required)" : " (optional)"}
-            </Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="content-url">
+                URL{urlRequired ? " (required)" : " (optional)"}
+              </Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                disabled={prefill.isPending || !getValues("url")?.trim()}
+                onClick={() => {
+                  lastPrefilledUrl.current = null;
+                  void runPrefill(getValues("url") ?? "", true);
+                }}
+                data-testid="create-content-autofill"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Auto-fill
+              </Button>
+            </div>
             <Input
               id="content-url"
               type="url"
               placeholder="https://…"
-              {...register("url")}
+              {...register("url", {
+                onBlur: (e) => {
+                  void runPrefill(e.target.value);
+                },
+              })}
               invalid={Boolean(errors.url)}
               data-testid="create-content-url"
             />
+            {prefill.isPending ? (
+              <p className="inline-flex items-center gap-1.5 text-xs text-muted-fg">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Suggesting title and tags…
+              </p>
+            ) : null}
             {errors.url ? (
               <p className="text-xs text-danger" data-testid="create-content-url-error">
                 {errors.url.message}

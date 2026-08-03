@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/states/EmptyState";
 import { ErrorState } from "@/components/states/ErrorState";
 
 import { useContentList } from "@/features/content/hooks/useContentList";
-import { CONTENT_TYPES, type ContentType } from "@/features/content/types";
+import { CONTENT_TYPES, type ContentType, type SearchMode } from "@/features/content/types";
 
 const PAGE_LIMIT = 20;
 
@@ -27,6 +27,8 @@ export function ContentList({ onOpenCreate }: Props) {
   const type = isContentType(typeParam) ? typeParam : undefined;
   const tag = params.get("tag") ?? undefined;
   const search = params.get("search") ?? undefined;
+  const mode: SearchMode | undefined =
+    params.get("mode") === "semantic" ? "semantic" : undefined;
 
   // Cursor pagination is mutually exclusive with search per backend.
   const [cursors, setCursors] = React.useState<string[]>([]); // stack of next cursors used for paging forward
@@ -35,12 +37,13 @@ export function ContentList({ onOpenCreate }: Props) {
   // Reset cursors whenever filters change, otherwise we'd page through the wrong list.
   React.useEffect(() => {
     setCursors([]);
-  }, [type, tag, search]);
+  }, [type, tag, search, mode]);
 
   const queryParams = {
     type,
     tag,
     search,
+    mode,
     cursor: currentCursor,
     limit: PAGE_LIMIT,
   };
@@ -102,6 +105,7 @@ export function ContentList({ onOpenCreate }: Props) {
           {type ? ` · ${type}` : ""}
           {tag ? ` · #${tag}` : ""}
           {search ? ` · "${search}"` : ""}
+          {search && mode === "semantic" ? " · smart" : ""}
         </p>
         {isFetching && data ? (
           <span className="inline-flex items-center gap-2 text-xs text-muted-fg">

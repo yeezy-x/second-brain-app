@@ -44,9 +44,28 @@ export const contentQuerySchema = z
       .max(50)
       .default(10),
     search: z.string().trim().max(100).optional(),
+    mode: z.enum(["keyword", "semantic"]).optional().default("keyword"),
   })
-  .strict();
+  .strict()
+  .refine(
+    (data) => data.mode !== "semantic" || (data.search && data.search.length > 0),
+    {
+      message: "search is required for semantic mode",
+      path: ["search"],
+    }
+  );
 
 export const contentIdSchema = z.object({
   id: z.string().uuid("Invalid ID format"),
 });
+
+export const addContentTagSchema = z
+  .object({
+    tag: z
+      .string()
+      .trim()
+      .min(1)
+      .max(30)
+      .transform((t) => t.toLowerCase()),
+  })
+  .strict();

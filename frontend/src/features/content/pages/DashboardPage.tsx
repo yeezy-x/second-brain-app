@@ -10,13 +10,15 @@ export default function DashboardPage() {
   const type = params.get("type");
   const tag = params.get("tag");
   const search = params.get("search");
+  const mode = params.get("mode");
 
   const heading = React.useMemo(() => {
+    if (search && mode === "semantic") return `Smart results for "${search}"`;
     if (search) return `Results for "${search}"`;
     if (tag) return `Tagged · #${tag}`;
     if (type) return `${type[0]?.toUpperCase()}${type.slice(1)}s`;
     return "Everything";
-  }, [type, tag, search]);
+  }, [type, tag, search, mode]);
 
   return (
     <div className="mx-auto w-full max-w-4xl">

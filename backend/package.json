@@ -9,6 +9,8 @@
     "start": "node dist/server.js",
     "clean": "rm -rf dist",
     "worker": "tsx src/jobs/metadata.worker.ts",
+    "smoke:embedding": "tsx src/scripts/smoke-embedding.ts",
+    "backfill:embeddings": "tsx src/scripts/backfill-embeddings.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:studio": "prisma studio"
@@ -17,7 +19,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@ai-sdk/google": "^4.0.31",
+    "@ai-sdk/openai": "^4.0.27",
     "@prisma/client": "^6.19.3",
+    "ai": "^7.0.48",
     "axios": "^1.14.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.76.2",

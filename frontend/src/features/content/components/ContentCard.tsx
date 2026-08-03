@@ -1,8 +1,19 @@
 import * as React from "react";
-import { ExternalLink, Trash2, X, Video, FileText, Link2 } from "lucide-react";
+import {
+  ChevronDown,
+  ExternalLink,
+  Loader2,
+  Sparkles,
+  Trash2,
+  X,
+  Video,
+  FileText,
+  Link2,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useAddContentTag } from "@/features/content/hooks/useAddContentTag";
 import { useDeleteContent } from "@/features/content/hooks/useDeleteContent";
 import type { ContentItem, ContentType } from "@/features/content/types";
 import { formatRelativeDate, safeUrlHostname } from "@/lib/utils";
@@ -27,15 +38,36 @@ export function ContentCard({ item }: { item: ContentItem }) {
   const meta = TYPE_META[item.type];
   const TypeIcon = meta.icon;
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [summaryOpen, setSummaryOpen] = React.useState(false);
   const del = useDeleteContent();
+  const addTag = useAddContentTag();
   const contentId = item._id || item.id;
   const tagNames = (item.tags ?? []).map((t) => t.name).filter(Boolean);
+
+  const ai = item.metadata?.ai;
+  const summary = ai?.summary;
+  const keyPoints = ai?.keyPoints ?? [];
+  const suggestedTags = (ai?.suggestedTags ?? []).filter(
+    (t) => !tagNames.includes(t)
+  );
+  const isEnriching = Boolean(
+    item.url && !summary && item.metadataStatus !== "failed"
+  );
 
   const handleDelete = async () => {
     try {
       await del.mutateAsync(contentId);
       toast.success("Content deleted");
       setConfirmOpen(false);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  const handleApplyTag = async (tag: string) => {
+    try {
+      await addTag.mutateAsync({ id: contentId, tag });
+      toast.success(`Added #${tag}`);
     } catch (err) {
       toast.error(getErrorMessage(err));
     }
@@ -71,6 +103,48 @@ export function ContentCard({ item }: { item: ContentItem }) {
             {item.title || <span className="text-muted-fg italic">Untitled</span>}
           </h3>
 
+          {isEnriching ? (
+            <p
+              className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-fg"
+              data-testid={`content-enriching-${contentId}`}
+            >
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Generating AI summary…
+            </p>
+          ) : null}
+
+          {summary ? (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setSummaryOpen((v) => !v)}
+                className="flex w-full items-start gap-1.5 text-left text-xs text-muted-fg hover:text-fg"
+                data-testid={`content-summary-toggle-${contentId}`}
+                aria-expanded={summaryOpen}
+              >
+                <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
+                <span className={summaryOpen ? "" : "line-clamp-2"}>
+                  {summary}
+                </span>
+                <ChevronDown
+                  className={`ml-auto h-3.5 w-3.5 shrink-0 transition-transform ${
+                    summaryOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {summaryOpen && keyPoints.length > 0 ? (
+                <ul
+                  className="mt-2 space-y-1 border-l border-border pl-3 text-xs text-muted-fg"
+                  data-testid={`content-keypoints-${contentId}`}
+                >
+                  {keyPoints.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
           {tagNames.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {tagNames.map((t) => (
@@ -80,6 +154,27 @@ export function ContentCard({ item }: { item: ContentItem }) {
                 >
                   #{t}
                 </span>
+              ))}
+            </div>
+          ) : null}
+
+          {suggestedTags.length > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-muted-fg/70">
+                Suggested
+              </span>
+              {suggestedTags.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => handleApplyTag(t)}
+                  disabled={addTag.isPending}
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-accent/40 bg-accent/5 px-2 py-0.5 text-[11px] text-accent transition-colors hover:bg-accent/15 disabled:opacity-50"
+                  data-testid={`suggested-tag-${contentId}-${t}`}
+                >
+                  <Sparkles className="h-2.5 w-2.5" />
+                  #{t}
+                </button>
               ))}
             </div>
           ) : null}

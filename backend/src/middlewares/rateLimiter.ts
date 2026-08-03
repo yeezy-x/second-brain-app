@@ -12,6 +12,29 @@ const getClientKey = (req: Request) => {
   return req.ip || req.socket.remoteAddress || "unknown";
 };
 
+export const createUserRateLimiter = (options: Options) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const userId = req.user?.id;
+    const key = userId
+      ? `${options.prefix}:user:${userId}`
+      : `${options.prefix}:${getClientKey(req)}`;
+    try {
+      const count = await redis.incr(key);
+      if (count === 1) {
+        await redis.expire(key, options.window);
+      }
+      if (count > options.limit) {
+        return next(
+          new ApiError(429, "Too many requests, please try again later")
+        );
+      }
+      return next();
+    } catch {
+      return next();
+    }
+  };
+};
+
 export const createRateLimiter = (options: Options) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     const key = `${options.prefix}:${getClientKey(req)}`;
@@ -42,4 +65,16 @@ export const rateLimiter = createRateLimiter({
   window: 15 * 60, 
   limit: 100,
   prefix: "rl:global",
+});
+
+export const aiRateLimiter = createRateLimiter({
+  window: 15 * 60,
+  limit: 30, // tune for Gemini free tier
+  prefix: "rl:ai",
+});
+
+export const aiChatRateLimiter = createUserRateLimiter({
+  window: 60 * 60,
+  limit: 20,
+  prefix: "rl:ai-chat",
 });

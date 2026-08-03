@@ -19,12 +19,32 @@ export type CreateContentRequest = {
 };
 
 /** A row as returned by GET /content. Tags are { id, name } objects. */
+export type ContentAiMetadata = {
+  summary: string;
+  suggestedTags: string[];
+  keyPoints: string[];
+  enrichedAt: string;
+  status?: "done" | "failed";
+};
+
+export type ContentMetadata = {
+  title?: string;
+  description?: string;
+  image?: string;
+  ai?: ContentAiMetadata;
+};
+
+export type SearchMode = "keyword" | "semantic";
+
 export type ContentItem = {
   id: string;
   _id: string;
   type: ContentType;
   title?: string;
   url?: string;
+  metadata?: ContentMetadata;
+  metadataStatus?: "pending" | "done" | "failed" | "fallback";
+  relevanceScore?: number;
   tags: ContentTag[];
   createdAt: string;
 };
@@ -40,4 +60,5 @@ export type ContentListQuery = {
   cursor?: string;
   limit?: number;
   search?: string;
+  mode?: SearchMode;
 };

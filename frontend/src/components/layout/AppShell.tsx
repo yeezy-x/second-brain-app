@@ -1,14 +1,18 @@
 import * as React from "react";
+import { MessageCircle } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
+import { Button } from "@/components/ui/button";
 import { CreateContentDialog } from "@/features/content/components/CreateContentDialog";
 import { ShareDialog } from "@/features/share/components/ShareDialog";
+import { ChatPanel } from "@/features/ai/components/ChatPanel";
 import { Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 export function AppShell() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
+  const [chatOpen, setChatOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   return (
@@ -56,6 +60,17 @@ export function AppShell() {
 
       <CreateContentDialog open={createOpen} onOpenChange={setCreateOpen} />
       <ShareDialog open={shareOpen} onOpenChange={setShareOpen} />
+      <ChatPanel open={chatOpen} onOpenChange={setChatOpen} />
+
+      <Button
+        type="button"
+        onClick={() => setChatOpen(true)}
+        className="fixed bottom-6 right-6 z-30 h-12 gap-2 rounded-full px-4 shadow-lg"
+        data-testid="ask-brain-fab"
+      >
+        <MessageCircle className="h-4 w-4" />
+        Ask
+      </Button>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
+import aiRoutes from "./modules/ai/ai.routes";
+import { aiRateLimiter } from "./middlewares/rateLimiter";
 
 import { logger } from "./core/logger";
 import { env } from "./config/env";
@@ -58,6 +60,8 @@ app.use("/api/v1/content", contentRoutes);
 app.use("/api/v1/tags", tagRoutes);
 app.use("/api/v1/share", shareRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/ai", aiRateLimiter, aiRoutes);
+
 
 app.use((req, res) => {
   res.status(404).json({

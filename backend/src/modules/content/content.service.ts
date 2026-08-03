@@ -3,11 +3,15 @@ import crypto from "crypto";
 
 import { ApiError } from "../../utils/ApiError";
 import { prisma } from "../../config/db";
-import { CreateContentDTO, GetContentQuery } from "./content.types";
+import { CreateContentDTO, GetContentQuery, ContentType } from "./content.types";
 
 import { metadataQueue } from "../../jobs/queue";
+import { enqueueEmbeddingJob } from "../../jobs/embedding.job";
 import { redis } from "../../config/redis";
 import { logger } from "../../core/logger";
+import { env } from "../../config/env";
+import { generateEmbedding } from "../../services/ai/client";
+import { toVectorLiteral } from "../../utils/vector";
 
 const hash = (obj: unknown) =>
   crypto.createHash("md5").update(JSON.stringify(obj)).digest("hex");
@@ -39,6 +43,113 @@ const mapContent = <T extends { id: string; tags?: { tag: { id: string; name: st
     tags: tags?.map((t) => t.tag) ?? [],
   };
 };
+
+const contentListSelect = {
+  id: true,
+  title: true,
+  type: true,
+  url: true,
+  metadata: true,
+  metadataStatus: true,
+  tags: { include: { tag: { select: { id: true, name: true } } } },
+  createdAt: true,
+} satisfies Prisma.ContentSelect;
+
+type ContentListRow = Prisma.ContentGetPayload<{
+  select: typeof contentListSelect;
+}>;
+
+async function semanticContentSearch(
+  userId: string,
+  search: string,
+  limit: number,
+  type?: ContentType,
+  tag?: string
+): Promise<{ data: ReturnType<typeof mapContent>[]; nextCursor: null } | null> {
+  const queryEmbedding = await generateEmbedding(search);
+  if (!queryEmbedding || queryEmbedding.length !== 768) {
+    return null;
+  }
+
+  const vectorLiteral = toVectorLiteral(queryEmbedding);
+
+  let tagId: string | null = null;
+  if (tag) {
+    const tagDoc = await prisma.tag.findUnique({
+      where: {
+        name_userId: { name: tag.toLowerCase(), userId },
+      },
+    });
+    if (!tagDoc) {
+      return { data: [], nextCursor: null };
+    }
+    tagId = tagDoc.id;
+  }
+
+  const conditions = [
+    `c."userId" = $2::uuid`,
+    `c.embedding IS NOT NULL`,
+    `c."aiStatus" = 'done'::"AiStatus"`,
+  ];
+  const params: unknown[] = [vectorLiteral, userId];
+  let paramIdx = 3;
+
+  if (type) {
+    conditions.push(`c.type = $${paramIdx}::"ContentType"`);
+    params.push(type);
+    paramIdx += 1;
+  }
+
+  let joinClause = "";
+  if (tagId) {
+    joinClause = `INNER JOIN "ContentTag" ct ON ct."contentId" = c.id AND ct."tagId" = $${paramIdx}::uuid`;
+    params.push(tagId);
+    paramIdx += 1;
+  }
+
+  params.push(limit);
+  const limitParam = paramIdx;
+
+  const sql = `
+    SELECT c.id, 1 - (c.embedding <=> $1::vector) AS score
+    FROM "Content" c
+    ${joinClause}
+    WHERE ${conditions.join(" AND ")}
+    ORDER BY c.embedding <=> $1::vector
+    LIMIT $${limitParam}
+  `;
+
+  const semanticResults = await prisma.$queryRawUnsafe<
+    Array<{ id: string; score: number | string }>
+  >(sql, ...params);
+
+  if (semanticResults.length === 0) {
+    return { data: [], nextCursor: null };
+  }
+
+  const ids = semanticResults.map((r) => r.id);
+  const scoreMap = new Map(
+    semanticResults.map((r) => [r.id, Number(r.score)])
+  );
+
+  const contents = await prisma.content.findMany({
+    where: { id: { in: ids }, userId },
+    select: contentListSelect,
+  });
+
+  const contentById = new Map(contents.map((c) => [c.id, c]));
+  const ordered = ids
+    .map((id) => contentById.get(id))
+    .filter((c): c is ContentListRow => c != null);
+
+  return {
+    data: ordered.map((c) => ({
+      ...mapContent(c),
+      relevanceScore: scoreMap.get(c.id),
+    })),
+    nextCursor: null,
+  };
+}
 
 export const createContentService = async (
   userId: string,
@@ -105,6 +216,8 @@ export const createContentService = async (
           removeOnFail: false,
         }
       );
+    } else {
+      await enqueueEmbeddingJob(content.id, userId);
     }
 
     return mapContent(content);
@@ -118,7 +231,7 @@ export const getContentService = async (
   userId: string,
   query: GetContentQuery
 ) => {
-  const { type, tag, cursor, limit, search } = query;
+  const { type, tag, cursor, limit, search, mode } = query;
 
   if (search && cursor) {
     throw new ApiError(400, "Cursor pagination not supported with search");
@@ -134,6 +247,7 @@ export const getContentService = async (
       type,
       tag,
       search,
+      mode,
       limit,
     })}`;
 
@@ -146,6 +260,20 @@ export const getContentService = async (
     } catch {
       logger.warn("Redis read failed, fallback to DB");
     }
+  }
+
+  if (search && mode === "semantic" && env.AI_ENABLED) {
+    const semanticResult = await semanticContentSearch(
+      userId,
+      search,
+      parsedLimit,
+      type,
+      tag
+    );
+    if (semanticResult) {
+      return semanticResult;
+    }
+    logger.info({ userId, search }, "Semantic search fallback to keyword");
   }
 
   const where: Prisma.ContentWhereInput = { userId };
@@ -229,15 +357,7 @@ export const getContentService = async (
     orderBy: search
       ? [{ createdAt: "desc" }, { id: "desc" }]
       : [{ createdAt: "desc" }, { id: "desc" }],
-    select: {
-      id: true,
-      title: true,
-      type: true,
-      url: true,
-      metadata: search ? true : false,
-      tags: { include: { tag: { select: { id: true, name: true } } } },
-      createdAt: true,
-    },
+    select: contentListSelect,
   });
 
   let nextCursor: string | null = null;
@@ -265,6 +385,7 @@ export const getContentService = async (
       type,
       tag,
       search,
+      mode,
       limit,
     })}`;
     const ttl = 60 + Math.floor(Math.random() * 20);
@@ -288,6 +409,63 @@ export const deleteContentService = async (id: string, userId: string) => {
   await bumpContentVersion(userId);
 
   return { success: true };
+};
+
+export const addContentTagService = async (
+  id: string,
+  userId: string,
+  tagName: string
+) => {
+  const content = await prisma.content.findFirst({
+    where: { id, userId },
+    include: { tags: { include: { tag: true } } },
+  });
+
+  if (!content) {
+    throw new ApiError(404, "Content not found");
+  }
+
+  const existingNames = new Set(content.tags.map((t) => t.tag.name));
+  if (existingNames.has(tagName)) {
+    throw new ApiError(400, "Tag already applied to this content");
+  }
+
+  if (content.tags.length >= 10) {
+    throw new ApiError(400, "Maximum 10 tags per content item");
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const tag = await tx.tag.upsert({
+      where: {
+        name_userId: { name: tagName, userId },
+      },
+      create: { name: tagName, userId },
+      update: {},
+    });
+
+    await tx.contentTag.create({
+      data: { contentId: id, tagId: tag.id },
+    });
+
+    return tx.content.findUnique({
+      where: { id },
+      select: contentListSelect,
+    });
+  });
+
+  if (!updated) {
+    throw new ApiError(404, "Content not found");
+  }
+
+  await bumpContentVersion(userId);
+
+  try {
+    await redis.del(`tags:${userId}`);
+  } catch {
+    logger.warn("Redis tag cache invalidation failed");
+  }
+
+  return mapContent(updated);
 };
 
 export const getContentByUserId = async (userId: string) => {

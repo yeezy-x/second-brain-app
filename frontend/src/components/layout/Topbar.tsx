@@ -1,10 +1,11 @@
 import * as React from "react";
-import { Menu, LogOut, Plus, Search, Share2, X, Shield } from "lucide-react";
+import { Menu, LogOut, Plus, Search, Share2, Sparkles, X, Shield } from "lucide-react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { useAuthStore } from "@/store/auth-store";
+import type { SearchMode } from "@/features/content/types";
 import { toast } from "sonner";
 
 type TopbarProps = {
@@ -13,10 +14,15 @@ type TopbarProps = {
   onShare: () => void;
 };
 
+function parseSearchMode(value: string | null): SearchMode {
+  return value === "semantic" ? "semantic" : "keyword";
+}
+
 export function Topbar({ onOpenSidebar, onCreate, onShare }: TopbarProps) {
   const [params, setParams] = useSearchParams();
   const initial = params.get("search") ?? "";
   const [value, setValue] = React.useState<string>(initial);
+  const searchMode = parseSearchMode(params.get("mode"));
   const navigate = useNavigate();
   const logout = useLogout();
   const email = useAuthStore((s) => s.user?.email);
@@ -34,7 +40,10 @@ export function Topbar({ onOpenSidebar, onCreate, onShare }: TopbarProps) {
       if (value === current) return;
       const next = new URLSearchParams(params);
       if (value) next.set("search", value);
-      else next.delete("search");
+      else {
+        next.delete("search");
+        next.delete("mode");
+      }
       // Search and cursor are mutually exclusive on the backend.
       next.delete("cursor");
       setParams(next, { replace: true });
@@ -42,6 +51,14 @@ export function Topbar({ onOpenSidebar, onCreate, onShare }: TopbarProps) {
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
+
+  const setSearchMode = (mode: SearchMode) => {
+    const next = new URLSearchParams(params);
+    if (mode === "semantic") next.set("mode", "semantic");
+    else next.delete("mode");
+    next.delete("cursor");
+    setParams(next, { replace: true });
+  };
 
   const handleLogout = async () => {
     try {
@@ -67,27 +84,65 @@ export function Topbar({ onOpenSidebar, onCreate, onShare }: TopbarProps) {
         <Menu className="h-4 w-4" />
       </Button>
 
-      <div className="relative flex-1 max-w-xl">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" />
-        <Input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Search by title or description…"
-          className="pl-9 pr-9"
-          aria-label="Search content"
-          data-testid="search-input"
-        />
-        {value ? (
+      <div className="flex min-w-0 flex-1 max-w-2xl items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" />
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={
+              searchMode === "semantic"
+                ? "Search by meaning…"
+                : "Search by title or description…"
+            }
+            className="pl-9 pr-9"
+            aria-label="Search content"
+            data-testid="search-input"
+          />
+          {value ? (
+            <button
+              type="button"
+              onClick={() => setValue("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-fg hover:text-fg"
+              aria-label="Clear search"
+              data-testid="search-clear"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+
+        <div
+          className="inline-flex shrink-0 rounded-md border border-border bg-bg-elev p-0.5"
+          role="group"
+          aria-label="Search mode"
+        >
           <button
             type="button"
-            onClick={() => setValue("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-fg hover:text-fg"
-            aria-label="Clear search"
-            data-testid="search-clear"
+            onClick={() => setSearchMode("keyword")}
+            className={`rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+              searchMode === "keyword"
+                ? "bg-bg-elev-2 text-fg shadow-sm"
+                : "text-muted-fg hover:text-fg"
+            }`}
+            data-testid="search-mode-keyword"
           >
-            <X className="h-3.5 w-3.5" />
+            Keyword
           </button>
-        ) : null}
+          <button
+            type="button"
+            onClick={() => setSearchMode("semantic")}
+            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+              searchMode === "semantic"
+                ? "bg-accent/15 text-accent shadow-sm"
+                : "text-muted-fg hover:text-fg"
+            }`}
+            data-testid="search-mode-semantic"
+          >
+            <Sparkles className="h-3 w-3" />
+            Smart
+          </button>
+        </div>
       </div>
 
       <Button onClick={onCreate} className="hidden sm:inline-flex" data-testid="topbar-create-btn">
