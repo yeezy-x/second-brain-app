@@ -5,9 +5,8 @@ import path from "node:path";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-
-  const backendTarget =
-    env.BACKEND_PROXY_TARGET || "http://localhost:3000";
+  const backendTarget = env.BACKEND_PROXY_TARGET || "http://localhost:3000";
+  
 
   return {
     plugins: [

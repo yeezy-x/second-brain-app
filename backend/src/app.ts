@@ -7,7 +7,6 @@ import aiRoutes from "./modules/ai/ai.routes";
 import { aiRateLimiter } from "./middlewares/rateLimiter";
 
 import { logger } from "./core/logger";
-import { env } from "./config/env";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { authRateLimiter, rateLimiter } from "./middlewares/rateLimiter";
 import { requestId } from "./middlewares/requestId.middleware";
@@ -17,6 +16,7 @@ import contentRoutes from "./modules/content/content.routes";
 import tagRoutes from "./modules/tag/tag.routes";
 import shareRoutes from "./modules/share/share.routes";
 import adminRoutes from "./modules/admin/admin.routes";
+import { env } from "./config/env";
 
 const app = express();
 
@@ -31,6 +31,8 @@ app.use(
 app.use(
   cors({
     origin: env.FRONTEND_ORIGIN,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
