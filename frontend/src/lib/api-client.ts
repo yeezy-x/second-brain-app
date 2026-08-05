@@ -9,7 +9,11 @@ import type { ApiSuccess } from "@/types/api";
 import { useAuthStore } from "@/store/auth-store";
 import type { AuthUser } from "@/features/auth/types";
 
-const API_BASE_URL = "/api/v1";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+
+if (!import.meta.env.VITE_API_BASE_URL && import.meta.env.PROD) {
+  console.warn("VITE_API_BASE_URL is not set; falling back to '/api/v1'.");
+}
 
 type RetriableConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
