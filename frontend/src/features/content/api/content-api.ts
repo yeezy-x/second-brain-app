@@ -3,6 +3,7 @@ import type {
   ContentItem,
   ContentListQuery,
   ContentListResponse,
+  ContentUpdateRequest,
   CreateContentRequest,
 } from "@/features/content/types";
 
@@ -27,6 +28,9 @@ export const contentApi = {
 
   addTag: (id: string, tag: string): Promise<ContentItem> =>
     http.post<ContentItem, { tag: string }>(`/content/${id}/tags`, { tag }),
+
+  updateContent: (id: string, body: ContentUpdateRequest): Promise<ContentItem> =>
+    http.patch<ContentItem, ContentUpdateRequest>(`/content/${id}`, body),
 
   remove: (id: string): Promise<null> => http.delete<null>(`/content/${id}`),
 };

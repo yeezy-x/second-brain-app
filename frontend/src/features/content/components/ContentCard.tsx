@@ -19,6 +19,7 @@ import type { ContentItem, ContentType } from "@/features/content/types";
 import { formatRelativeDate, safeUrlHostname } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/error";
 import { toast } from "sonner";
+import { useUpdateContent } from "../hooks/useUpdateContent";
 
 const TYPE_META: Record<
   ContentType,
@@ -40,16 +41,16 @@ export function ContentCard({ item }: { item: ContentItem }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [summaryOpen, setSummaryOpen] = React.useState(false);
   const del = useDeleteContent();
+  const updateContent = useUpdateContent();
   const addTag = useAddContentTag();
   const contentId = item._id || item.id;
   const tagNames = (item.tags ?? []).map((t) => t.name).filter(Boolean);
-
   const ai = item.metadata?.ai;
   const summary = ai?.summary;
   const keyPoints = ai?.keyPoints ?? [];
   const suggestedTags = (ai?.suggestedTags ?? []).filter(
     (t) => !tagNames.includes(t)
-  );
+  );  
   const isEnriching = Boolean(
     item.url && !summary && item.metadataStatus !== "failed"
   );
@@ -73,6 +74,16 @@ export function ContentCard({ item }: { item: ContentItem }) {
     }
   };
 
+  const handleUpdate = async (data: string[] | undefined) => {
+    try {
+      await updateContent.mutateAsync({ id: contentId, tags: data });
+      toast.success("Content updated");
+      setConfirmOpen(false);
+    } catch (err) {
+      toast.error(getErrorMessage(err));  
+    }
+  };
+
   return (
     <li
       data-testid={`content-card-${contentId}`}
@@ -85,7 +96,7 @@ export function ContentCard({ item }: { item: ContentItem }) {
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={meta.tone}>{meta.label}</Badge>
+            <Badge variant={meta.tone} onClick={() => handleUpdate(item.tags.map((t) => t.name))}>{meta.label}</Badge>
             <span className="text-xs text-muted-fg">
               {formatRelativeDate(item.createdAt)}
             </span>

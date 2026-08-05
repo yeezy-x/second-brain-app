@@ -2,14 +2,20 @@ import { z } from "zod";
 import {
   createContentSchema,
   contentQuerySchema,
-  ContentTypeEnum
+  ContentTypeEnum,
+  updateContentSchema,
+  contentIdSchema
 } from "./content.validation";
 
 export type ContentType = z.infer<typeof ContentTypeEnum>;
 
 export type CreateContentDTO = z.infer<typeof createContentSchema>;
 
-export type GetContentQuery = z.infer<typeof contentQuerySchema>;
+export type ContentGetQuery = z.infer<typeof contentQuerySchema>;
+
+export type ContentUpdateDTO = z.infer<typeof updateContentSchema>;
+
+export type ContentIdDTO = z.infer<typeof contentIdSchema>;
 
 export interface ContentResponseDTO {
   id: string;

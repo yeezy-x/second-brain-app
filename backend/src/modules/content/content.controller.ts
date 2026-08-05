@@ -5,9 +5,11 @@ import {
   getContentService,
   deleteContentService,
   addContentTagService,
+  updateContentService,
 } from "./content.service";
 import { ApiResponse } from "../../utils/ApiResponse";
-import { CreateContentDTO, GetContentQuery } from "./content.types";
+import { CreateContentDTO, ContentGetQuery, ContentUpdateDTO, ContentIdDTO } from "./content.types";
+import { contentIdSchema } from "./content.validation";
 
 export const createContent = asyncHandler(
   async (req: Request, res: Response) => {
@@ -23,7 +25,7 @@ export const createContent = asyncHandler(
 export const getContent = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const query = req.validatedQuery as GetContentQuery;
+    const query = req.validatedQuery as ContentGetQuery;
     const result = await getContentService(userId, query);
     return res.status(200).json(
       new ApiResponse(
@@ -45,6 +47,18 @@ export const deleteContent = asyncHandler(
     await deleteContentService(id, userId);
     return res.status(200).json(
       new ApiResponse(null, "Content deleted", req.id)
+    );
+  }
+);
+
+export const updateContent = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { id } = req.validatedParams as ContentIdDTO;
+    const data = req.validatedBody as ContentUpdateDTO;
+    const content = await updateContentService(userId, id, data);
+    return res.status(200).json(
+      new ApiResponse(content, "Content updated", req.id)
     );
   }
 );

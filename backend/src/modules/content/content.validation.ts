@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { refine, z } from "zod";
 export const ContentTypeEnum = z.enum(["tweet","video","document","link"]);
 
 export const createContentSchema = z
@@ -58,6 +58,23 @@ export const contentQuerySchema = z
 export const contentIdSchema = z.object({
   id: z.string().uuid("Invalid ID format"),
 });
+
+export const updateContentSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(2000).optional(),
+  url: z.string().trim().url().optional(),
+  tags: z.array(z.string().trim().min(1).max(30)).max(10).optional().transform((tags) =>
+    tags
+      ? [...new Set(tags.map((t) => t.trim().toLowerCase()))].filter((t) => t.length > 0)
+      : tags
+  ),
+}).strict().refine((data) => {
+  return !!data.url || !!data.title || !!data.description || (data.tags && data.tags.length > 0);
+  }, {
+  message: "URL or title or description or tags must be provided",
+  path: ["url", "title", "description", "tags.length"],
+});
+
 
 export const addContentTagSchema = z
   .object({

@@ -3,7 +3,7 @@ import crypto from "crypto";
 
 import { ApiError } from "../../utils/ApiError";
 import { prisma } from "../../config/db";
-import { CreateContentDTO, GetContentQuery, ContentType } from "./content.types";
+import { CreateContentDTO, ContentType, ContentUpdateDTO, ContentGetQuery } from "./content.types";
 
 import { metadataQueue } from "../../jobs/queue";
 import { enqueueEmbeddingJob } from "../../jobs/embedding.job";
@@ -157,7 +157,7 @@ export const createContentService = async (
 ) => {
   const url =
     typeof data.url === "string" && data.url.trim() !== ""
-      ? data.url.trim().toLowerCase()
+      ? data.url.trim()
       : undefined;
   const tags = data.tags || [];
 
@@ -219,7 +219,6 @@ export const createContentService = async (
     } else {
       await enqueueEmbeddingJob(content.id, userId);
     }
-
     return mapContent(content);
   } catch (error) {
     logger.error({ err: error }, "createContentService failed");
@@ -229,7 +228,7 @@ export const createContentService = async (
 
 export const getContentService = async (
   userId: string,
-  query: GetContentQuery
+  query: ContentGetQuery
 ) => {
   const { type, tag, cursor, limit, search, mode } = query;
 
@@ -483,4 +482,44 @@ export const getContentByUserId = async (userId: string) => {
     },
   });
   return contents.map(mapContent);
+};
+
+
+export const updateContentService = async (userId: string, id: string, data: ContentUpdateDTO) => {
+    const updatedContent = await prisma.$transaction(async (tx) => {
+    const content = await tx.content.findUnique({
+      where: { id, userId },
+      include: { tags: { include: { tag: true } } },
+    });
+    if (!content) {
+      throw new ApiError(404, "Content not found");
+    }
+    const existingTagNames = new Set(content.tags.map((t) => t.tag.name));
+    const newTagNames = data.tags?.filter((tag) => !existingTagNames.has(tag)) ?? [];
+    const tagDocs = await Promise.all(
+      newTagNames.map((tag) =>
+        tx.tag.upsert({
+          where: { name_userId: { name: tag.toLowerCase(), userId } },
+          create: { name: tag.toLowerCase(), userId },
+          update: {},
+        })
+      ) ?? []
+    );
+    const updatedContent = await tx.content.update({
+      where: { id, userId },
+      data: {
+        title: data.title,
+        description: data.description,
+        url: data.url,
+        tags: {
+          create: tagDocs.map((t) => ({ tagId: t.id })),
+        },
+      },
+      include: {
+        tags: { include: { tag: true } },
+      },
+    });
+    return updatedContent;
+  });
+  return mapContent(updatedContent);
 };
