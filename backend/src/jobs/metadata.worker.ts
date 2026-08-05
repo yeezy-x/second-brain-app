@@ -29,7 +29,7 @@ const startWorker = async () => {
         }
       },
       {
-        connection,
+        connection: connection as any,
         concurrency: 2,
       }
     );
@@ -41,7 +41,9 @@ const startWorker = async () => {
         logger.info({ jobId: job.id, contentId }, "Processing enrichment job");
         await processEnrichment(contentId, userId);
       },
-      { connection, concurrency: 1 } // 1 is safer for free Gemini rate limits
+      { 
+        connection: connection as any,
+        concurrency: 1 } // 1 is safer for free Gemini rate limits
     );
 
     const embeddingWorker = new Worker(
@@ -51,7 +53,8 @@ const startWorker = async () => {
         logger.info({ jobId: job.id, contentId }, "Processing embedding job");
         await processEmbedding(contentId, userId);
       },
-      { connection, concurrency: 1 }
+      { connection: connection as any,
+        concurrency: 1 }
     );
 
     embeddingWorker.on("completed", (job) => {
